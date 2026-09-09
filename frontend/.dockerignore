@@ -1,0 +1,9 @@
+node_modules
+.nuxt
+.output
+dist
+android
+.git
+*.log
+Dockerfile
+.dockerignore

@@ -1,0 +1,110 @@
+# SynapseCME — full local stack. Reference GPU: NVIDIA GeForce RTX 3060 Ti (8 GB VRAM).
+# Everything runs on-edge; no cloud APIs.
+
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: synapse-neo4j
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-synapse-local-dev}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_max__size: 1G
+    volumes:
+      - neo4j_data:/data
+      - ./backend/app/graph/schema.cypher:/schemas/schema.cypher:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: synapse-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-synapse_state}
+      POSTGRES_USER: ${POSTGRES_USER:-synapse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synapse-local-dev}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./backend/app/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-synapse} -d $${POSTGRES_DB:-synapse_state}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Local inference node (QVAC / Ollama runtime).
+  # Runs CPU-only by default, so the stack works on any machine.
+  # On the NVIDIA node (RTX 3060 Ti), apply the GPU override:
+  #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+  # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + bge-m3 (~1.2 GB) <= 6 GB.
+  qvac:
+    image: ollama/ollama:latest
+    container_name: synapse-qvac
+    ports:
+      - "11434:11434"
+    entrypoint: ["/qvac-entrypoint.sh"]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_KEEP_ALIVE: 30m
+      MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+    volumes:
+      - qvac_models:/root/.ollama
+      - ./scripts/qvac-entrypoint.sh:/qvac-entrypoint.sh:ro
+      - ./models:/models:ro
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    container_name: synapse-backend
+    ports:
+      - "8000:8000"
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-synapse-local-dev}
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse-local-dev}@postgres:5432/${POSTGRES_DB:-synapse_state}
+      QVAC_BASE_URL: http://qvac:11434
+      MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qvac:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build: ./frontend
+    container_name: synapse-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  neo4j_data:
+  pg_data:
+  qvac_models:

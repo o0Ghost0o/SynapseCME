@@ -1,0 +1,16 @@
+# GPU override — apply on the NVIDIA node (GeForce RTX 3060 Ti, 8 GB VRAM):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Without this file the qvac service runs CPU-only, so the full stack also
+# works on machines without a GPU (slower inference, same behavior).
+
+services:
+  qvac:
+    # With the NVIDIA device reserved below, Ollama auto-detects and uses the
+    # GPU (full layer offload by default). No extra env vars needed.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-confirmado: #34d399;
+  --color-reportado: #38bdf8;
+  --color-estimado: #fbbf24;
+  --color-desconocido: #fb7185;
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+}
+
+body {
+  @apply font-sans text-slate-100 antialiased;
+  background:
+    radial-gradient(1100px 750px at 88% -10%, rgba(99, 102, 241, 0.3), transparent 60%),
+    radial-gradient(950px 700px at -12% 108%, rgba(56, 189, 248, 0.16), transparent 60%),
+    radial-gradient(700px 500px at 50% 120%, rgba(168, 85, 247, 0.12), transparent 65%),
+    linear-gradient(160deg, #0b1023 0%, #111633 48%, #0b1023 100%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  /* Superficies de vidrio esmerilado */
+  .glass {
+    @apply rounded-2xl border border-white/15 bg-white/10 shadow-[0_8px_32px_rgba(2,6,23,0.45)] backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply rounded-2xl border border-white/20 bg-white/[0.14] shadow-[0_12px_40px_rgba(2,6,23,0.55)] backdrop-blur-2xl;
+  }
+
+  .glass-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-xs font-medium backdrop-blur-xl;
+  }
+
+  .glass-input {
+    @apply w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-slate-100 backdrop-blur-xl transition placeholder:text-slate-400/70 focus:border-indigo-300/40 focus:outline-none focus:ring-2 focus:ring-indigo-400/20;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-indigo-300/30 bg-indigo-500/30 px-4 py-2.5 text-sm font-semibold text-indigo-100 backdrop-blur-xl transition hover:bg-indigo-500/45 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 backdrop-blur-xl transition hover:bg-white/15 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .nav-link {
+    @apply rounded-xl px-3.5 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white;
+  }
+
+  .nav-link-active {
+    @apply border border-white/15 bg-white/15 text-white shadow-[0_4px_16px_rgba(2,6,23,0.35)];
+  }
+
+  .th-cell {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400;
+  }
+
+  .td-cell {
+    @apply px-4 py-3 text-sm text-slate-200;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.pulse-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse-ring 1.4s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-in {
+  animation: toast-in 0.25s ease-out forwards;
+}
+
+::selection {
+  background: rgba(129, 140, 248, 0.35);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

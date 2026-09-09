@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+
+# Build Nuxt / Nitro
+.nuxt/
+.output/
+dist/
+
+# Capacitor
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/
+
+# Otros
+*.log
+.DS_Store
