@@ -30,6 +30,9 @@ const lastMutation = ref<MutationEvent | null>(null)
 
 let ws: WebSocket | null = null
 let hello: { client_type: string; name: string } | null = null
+let getToken: (() => string | null) | null = null
+let onAuthError: (() => void | Promise<void>) | null = null
+let authRetryUsed = false
 let attempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 let pingTimer: ReturnType<typeof setInterval> | undefined
@@ -75,6 +78,16 @@ function handleMessage(event: MessageEvent) {
       lastMutation.value = { summary, nodeHint: extractNodeHint(summary), at: Date.now() }
       break
     }
+    case 'error': {
+      // El servidor cierra conexiones no autenticadas; reintentar tras renovar el token.
+      const reason = `${msg.reason ?? ''} ${msg.message ?? ''} ${msg.code ?? ''}`.toLowerCase()
+      const authish = ['auth', 'token', 'unauthorized', '401', 'forbidden'].some((k) => reason.includes(k))
+      if (authish && onAuthError && !authRetryUsed) {
+        authRetryUsed = true
+        void onAuthError()
+      }
+      break
+    }
   }
 }
 
@@ -89,6 +102,15 @@ function scheduleReconnect(connectFn: () => void) {
   const delay = Math.min(1000 * 2 ** Math.min(attempts - 1, 4), 15000)
   clearTimeout(reconnectTimer)
   reconnectTimer = setTimeout(connectFn, delay)
+}
+
+function helloPayload(): string {
+  const token = getToken?.()
+  return JSON.stringify({
+    type: 'hello',
+    ...(token ? { token } : {}),
+    ...(hello ?? {}),
+  })
 }
 
 export function useEvents() {
@@ -115,8 +137,9 @@ export function useEvents() {
     }
     ws.onopen = () => {
       attempts = 0
+      authRetryUsed = false
       status.value = 'online'
-      if (hello) ws?.send(JSON.stringify({ type: 'hello', ...hello }))
+      if (hello) ws?.send(helloPayload())
       clearInterval(pingTimer)
       pingTimer = setInterval(() => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
@@ -133,14 +156,33 @@ export function useEvents() {
     }
   }
 
-  function ensure(opts?: { client_type?: string; name?: string }) {
+  function ensure(opts?: {
+    client_type?: string
+    name?: string
+    getToken?: () => string | null
+    onAuthError?: () => void | Promise<void>
+  }) {
     if (opts) {
       hello = {
-        client_type: opts.client_type || 'dashboard',
-        name: opts.name || 'Panel web SynapseCME',
+        client_type: opts.client_type ?? hello?.client_type ?? 'dashboard',
+        name: opts.name ?? hello?.name ?? 'Panel web SynapseCME',
       }
-      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'hello', ...hello }))
+      if (opts.getToken) getToken = opts.getToken
+      if (opts.onAuthError) onAuthError = opts.onAuthError
+      if (ws?.readyState === WebSocket.OPEN) ws.send(helloPayload())
     }
+    connect()
+  }
+
+  function reconnect() {
+    clearTimeout(reconnectTimer)
+    clearInterval(pingTimer)
+    try {
+      ws?.close()
+    } catch {
+      // ya cerrado
+    }
+    ws = null
     connect()
   }
 
@@ -152,5 +194,5 @@ export function useEvents() {
     status.value = 'offline'
   }
 
-  return { status, clients, txs, lastMutation, ensure, connect, disconnect }
+  return { status, clients, txs, lastMutation, ensure, connect, reconnect, disconnect }
 }

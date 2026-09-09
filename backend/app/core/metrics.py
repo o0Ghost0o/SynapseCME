@@ -2,8 +2,8 @@
 
 Every QVAC chat call is wrapped by :func:`build_metrics`, which produces an
 ``InferenceMetrics`` record ready for ``perf_log``. Token counts come from the
-QVAC/Ollama ``usage`` payload when present; otherwise they are estimated at
-~4 chars/token.
+OpenAI ``usage`` object (``prompt_tokens`` / ``completion_tokens``) when
+present; otherwise they are estimated at ~4 chars/token.
 """
 
 from __future__ import annotations
@@ -73,29 +73,22 @@ def build_metrics(
 ) -> InferenceMetrics:
     """Build a perf record from a streamed chat call.
 
-    ``usage`` is the Ollama/QVAC ``done`` payload: ``prompt_eval_count``,
-    ``eval_count`` and ``eval_duration`` (nanoseconds) when available.
+    ``usage`` is the OpenAI usage object from the final stream chunk:
+    ``prompt_tokens`` / ``completion_tokens`` when available.
     """
     if usage:
-        prompt_tokens = int(usage.get("prompt_eval_count") or estimate_tokens(prompt_text))
-        generation_tokens = int(usage.get("eval_count") or estimate_tokens(generated_text))
-        eval_ns = int(usage.get("eval_duration") or 0)
-        gen_s = eval_ns / 1e9 if eval_ns > 0 else generation_seconds(ttft_ms, total_ms)
-        load_ns = int(usage.get("load_duration") or 0)
+        prompt_tokens = int(usage.get("prompt_tokens") or estimate_tokens(prompt_text))
+        generation_tokens = int(usage.get("completion_tokens") or estimate_tokens(generated_text))
     else:
         prompt_tokens = estimate_tokens(prompt_text)
         generation_tokens = estimate_tokens(generated_text)
-        gen_s = generation_seconds(ttft_ms, total_ms)
-        load_ns = 0
+    gen_s = generation_seconds(ttft_ms, total_ms)
 
     throughput = compute_throughput(generation_tokens, gen_s)
 
-    # Ollama reports load_duration on the first request that pulls the model
-    # into VRAM; fall back to TTFT (which includes the load) when cold.
-    if cold_start:
-        model_load_ms = int(load_ns / 1e6) if load_ns > 0 else ttft_ms
-    else:
-        model_load_ms = None
+    # The QVAC server preloads models at startup; there is no cold-start
+    # signal in the OpenAI usage object, so model_load_ms stays None.
+    model_load_ms = None
 
     return InferenceMetrics(
         model=model,

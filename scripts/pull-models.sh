@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
-# Pull the model stack onto the QVAC/Ollama node.
-# Target GPU: NVIDIA GeForce RTX 3060 Ti (8 GB VRAM).
-# Budget: MedPsy Q4_K_M (~4.5 GB) + bge-m3 (~0.5 GB) <= 6 GB resident.
+# Report/refresh the models served by the QVAC node.
+# The OpenAI-compatible API has no pull endpoint — models are downloaded
+# automatically by the server at startup (see scripts/qvac-server-entrypoint.sh
+# and scripts/qvac.config.json). This script just verifies what the node
+# currently serves.
 set -euo pipefail
 
 QVAC_URL="${QVAC_URL:-http://localhost:11434}"
-MEDPSY_MODEL="${MEDPSY_MODEL:-medpsy:q4_k_m}"
-EMBED_MODEL="${EMBED_MODEL:-bge-m3}"
 
-pull() {
-  echo ">> pulling $1"
-  curl -sf -X POST "$QVAC_URL/api/pull" -d "{\"name\": \"$1\"}"
-  echo
-}
-
-pull "$MEDPSY_MODEL"
-pull "$EMBED_MODEL"
-
-echo ">> installed models:"
-curl -sf "$QVAC_URL/api/tags"
+echo ">> models served by $QVAC_URL:"
+curl -sf "$QVAC_URL/v1/models" | jq .
+echo
+echo ">> note: no pull endpoint exists on the OpenAI-compatible API."
+echo ">> Models download automatically when the QVAC server starts."
+echo ">> Drop a GGUF into ./models/ or set QVAC_MODEL_SOURCE (Phase 2) for P2P fetch."

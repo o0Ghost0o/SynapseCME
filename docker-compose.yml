@@ -38,14 +38,45 @@ services:
       timeout: 5s
       retries: 12
 
-  # Local inference node (QVAC / Ollama runtime).
+  # Local inference node: real QVAC (Tether) OpenAI-compatible server
+  # (@qvac/cli, `qvac serve openai`). Models are declared in a generated
+  # qvac.config.json; GGUF drop zone is ./models (ro).
   # Runs CPU-only by default, so the stack works on any machine.
   # On the NVIDIA node (RTX 3060 Ti), apply the GPU override:
   #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-  # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + bge-m3 (~1.2 GB) <= 6 GB.
+  # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + embeddings (~0.3 GB) <= 6 GB.
   qvac:
-    image: ollama/ollama:latest
+    image: node:22-bookworm-slim
     container_name: synapse-qvac
+    entrypoint: ["/qvac-server-entrypoint.sh"]
+    environment:
+      MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
+      # Phase 2: Pear/HTTP URL for P2P model fetch. Empty = registry/local only.
+      QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-}
+      QVAC_PORT: "11434"
+      QVAC_HOST: 0.0.0.0
+    volumes:
+      - qvac_models:/usr/local/lib/node_modules
+      - qvac_npm_cache:/root/.npm
+      - ./scripts/qvac-server-entrypoint.sh:/qvac-server-entrypoint.sh:ro
+      - ./models:/models:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:11434/v1/models').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Legacy Ollama node — opt-in fallback only (profile "ollama", off by
+  # default). QVAC is the single inference core.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: synapse-ollama
+    profiles: ["ollama"]
     entrypoint: ["/qvac-entrypoint.sh"]
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
@@ -53,16 +84,39 @@ services:
       OLLAMA_NUM_PARALLEL: "2"
       OLLAMA_KEEP_ALIVE: 30m
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
-      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
     volumes:
       - ${VOLUMES_ROOT:-./volumes}/qvac:/root/.ollama
       - ./scripts/qvac-entrypoint.sh:/qvac-entrypoint.sh:ro
       - ./models:/models:ro
+
+  # Speech-to-text (speaches / faster-whisper, OpenAI-compatible API).
+  # CPU variant on purpose: the RTX 3060 Ti's 8 GB VRAM stay reserved for
+  # MedPsy. A CUDA variant (ghcr.io/speaches-ai/speaches:latest-cuda) exists
+  # if GPU headroom is ever wanted — see docker-compose.gpu.yml.
+  # Internal only (gateway pattern): no published ports.
+  # Env conventions verified against the pinned image's config (pydantic
+  # settings): WHISPER__MODEL -> whisper.model, UVICORN__PORT -> port (8000),
+  # DEFAULT_LANGUAGE -> default transcription language.
+  # First use downloads the model (~460 MB) into the persistent HF cache.
+  stt:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: synapse-stt
+    environment:
+      WHISPER__MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      UVICORN__PORT: "8000"
+      DEFAULT_LANGUAGE: es
+      ENABLE_UI: "false"
+    volumes:
+      - ${VOLUMES_ROOT:-./volumes}/stt:/home/ubuntu/.cache/huggingface
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      # FastAPI app: prefer /health, fall back to /docs. The speaches image
+      # has no wget/curl — use python (present in the image).
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=5)\" 2>/dev/null || python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/docs',timeout=5)\" 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 24
+      start_period: 60s
 
   backend:
     build: ./backend
@@ -73,8 +127,17 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-synapse-local-dev}
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse-local-dev}@postgres:5432/${POSTGRES_DB:-synapse_state}
       QVAC_BASE_URL: http://qvac:11434
+      STT_BASE_URL: http://stt:8000
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
-      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
+      JWT_SECRET: ${JWT_SECRET:-synapse-dev-jwt-secret-cambiame}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-synapse-admin}
+      # Phase 3 — node-to-node observation sync. Empty SYNC_PEERS = sync off;
+      # empty SYNC_TOKEN = /api/sync/ingest answers 404 (endpoint closed).
+      SYNC_PEERS: ${SYNC_PEERS:-}
+      SYNC_TOKEN: ${SYNC_TOKEN:-}
+      SYNC_INTERVAL_S: ${SYNC_INTERVAL_S:-30}
     depends_on:
       neo4j:
         condition: service_healthy
@@ -82,6 +145,10 @@ services:
         condition: service_healthy
       qvac:
         condition: service_healthy
+      stt:
+        condition: service_healthy
+    volumes:
+      - rag_data:/data/rag
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
@@ -117,3 +184,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+volumes:
+  qvac_models:
+  qvac_npm_cache:
+  rag_data:

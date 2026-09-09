@@ -45,11 +45,13 @@ class PresenceClient:
     connected_at: float
     last_seen: float
     online: bool = True
+    username: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "client_type": self.client_type,
             "name": self.name,
+            "username": self.username,
             "connected_at": self.connected_at,
             "last_seen": self.last_seen,
             "online": self.online,
@@ -63,12 +65,15 @@ class PresenceRegistry:
         self.stale_after = stale_after
         self._clients: dict[str, PresenceClient] = {}
 
-    def register(self, key: str, client_type: str, name: str) -> PresenceClient:
+    def register(
+        self, key: str, client_type: str, name: str, username: str | None = None
+    ) -> PresenceClient:
         now = time.time()
         client = self._clients.get(key)
         if client is None:
             client = PresenceClient(
-                client_type=client_type, name=name, connected_at=now, last_seen=now
+                client_type=client_type, name=name, connected_at=now, last_seen=now,
+                username=username,
             )
             self._clients[key] = client
         else:
@@ -76,6 +81,7 @@ class PresenceRegistry:
             client.last_seen = now
             client.client_type = client_type
             client.name = name
+            client.username = username
         return client
 
     def touch(self, key: str) -> None:

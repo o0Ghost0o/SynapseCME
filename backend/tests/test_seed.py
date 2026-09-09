@@ -5,10 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-for p in (str(ROOT / "backend"), str(ROOT)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+_HERE = Path(__file__).resolve()
+# Repo checkout: tests live in backend/tests (repo root = parents[2]).
+# Container image (Dockerfile.test): everything is copied under /app.
+for root in {_HERE.parents[2], _HERE.parents[1]}:
+    for sub in (root, root / "backend"):
+        if (sub / "data").is_dir() or (sub / "app").is_dir():
+            sp = str(sub)
+            if sp not in sys.path:
+                sys.path.insert(0, sp)
 
 from data.synthetic.seed import (  # noqa: E402
     CONTRIBUTORS,

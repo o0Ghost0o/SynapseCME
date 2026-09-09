@@ -150,6 +150,7 @@ async def ingest_extraction(
     ext: ExtractionResult,
     contributor: str,
     client_type: str | None,
+    full_name: str | None = None,
 ) -> IngestResult:
     """MERGE the extracted hierarchy + observation, apply consensus states."""
     result = IngestResult()
@@ -189,7 +190,8 @@ async def ingest_extraction(
                 target_type="Facility",
                 target_id=facility_id,
                 target_name=ext.facility,
-                payload={"city": city_name, "country": country_name, "region": region_name},
+                payload={"city": city_name, "country": country_name, "region": region_name,
+                         "full_name": full_name},
             )
             if entry is not None:
                 result.transaction_ids.append(entry["id"])
@@ -276,6 +278,7 @@ async def ingest_extraction(
                     "quantity": item.quantity,
                     "age_years": item.age_years,
                     "confidence": item.confidence,
+                    "full_name": full_name,
                 },
             )
             if entry is not None:
@@ -306,7 +309,12 @@ def _norm(value: str | None) -> str:
 def _pick_equipment(
     candidates: list[dict[str, Any]], manufacturer: str | None, model: str | None
 ) -> dict[str, Any] | None:
-    """Choose the existing equipment node an observation most likely refers to."""
+    """Choose the existing equipment node an observation most likely refers to.
+
+    Returns None when the observation identifies a unit that conflicts with
+    every known candidate (e.g. reports Siemens where only a GE unit is
+    known) so the caller creates a new node instead of overwriting data.
+    """
     if not candidates:
         return None
     mfr, mdl = _norm(manufacturer), _norm(model)
@@ -314,15 +322,22 @@ def _pick_equipment(
         for c in candidates:
             if _norm(c.get("manufacturer")) == mfr:
                 return c
+        # Upgrade an unidentified unit with this identification.
+        for c in candidates:
+            if not c.get("manufacturer"):
+                return c
+        # Known manufacturers conflict: this is a different unit.
+        return None
     if mdl:
         for c in candidates:
             if _norm(c.get("model")) == mdl:
                 return c
-    # Unknown-manufacturer unit: the first candidate without a manufacturer
-    # gets upgraded by this identification.
-    for c in candidates:
-        if not c.get("manufacturer"):
-            return c
+        for c in candidates:
+            if not c.get("model"):
+                return c
+        return None
+    # No manufacturer/model reported: reuse the first candidate (the
+    # merge keeps whichever attributes are already known).
     return candidates[0]
 
 

@@ -20,16 +20,25 @@ logger = logging.getLogger("synapse.db")
 _pool: asyncpg.Pool | None = None
 
 
-async def init_pool(dsn: str) -> bool:
+async def init_pool(dsn: str, retries: int = 5, delay: float = 2.0) -> bool:
+    """Create the pool, retrying briefly (compose services boot in parallel)."""
     global _pool
-    try:
-        _pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=10)
-        logger.info("Conexión a PostgreSQL establecida")
-        return True
-    except Exception as exc:  # noqa: BLE001 - startup must not crash
-        logger.warning("PostgreSQL no disponible (%s); métricas y transacciones desactivadas", exc)
-        _pool = None
-        return False
+    for attempt in range(1, retries + 1):
+        try:
+            _pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=10)
+            logger.info("Conexión a PostgreSQL establecida")
+            return True
+        except Exception as exc:  # noqa: BLE001 - startup must not crash
+            logger.warning(
+                "PostgreSQL no disponible (intento %d/%d): %s", attempt, retries, exc
+            )
+            _pool = None
+            if attempt < retries:
+                import asyncio
+
+                await asyncio.sleep(delay)
+    logger.warning("PostgreSQL no disponible; métricas y transacciones desactivadas")
+    return False
 
 
 def pool() -> asyncpg.Pool | None:
@@ -204,3 +213,163 @@ async def recent_perf(limit: int = 100) -> list[dict[str, Any]]:
             limit,
         )
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Auth schema + helpers (users, refresh tokens)
+# ---------------------------------------------------------------------------
+#
+# ``ensure_schema`` runs at every startup so existing deployments (whose
+# PostgreSQL data dir is already initialized and will not re-run init.sql)
+# get the auth tables created idempotently.
+
+SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id BIGSERIAL PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        full_name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('admin', 'capturer', 'viewer')),
+        password_hash TEXT NOT NULL,
+        disabled BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id)",
+]
+
+
+async def ensure_schema() -> bool:
+    """Create any missing table (idempotent). True when a pool is available."""
+    if _pool is None:
+        logger.warning("PostgreSQL no disponible; esquema de auth no garantizado")
+        return False
+    async with _pool.acquire() as conn:
+        for stmt in SCHEMA_STATEMENTS:
+            await conn.execute(stmt)
+    logger.info("Esquema PostgreSQL verificado (users, refresh_tokens)")
+    return True
+
+
+async def count_users() -> int:
+    if _pool is None:
+        return 0
+    async with _pool.acquire() as conn:
+        return int(await conn.fetchval("SELECT count(*) FROM users"))
+
+
+_USER_COLUMNS = (
+    "id, username, full_name, role, disabled, "
+    "to_char(created_at, 'YYYY-MM-DD\"T\"HH24:MI:SSZ') AS created_at"
+)
+
+
+async def get_user_by_username(username: str) -> dict[str, Any] | None:
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {_USER_COLUMNS}, password_hash FROM users WHERE username = $1",
+            username,
+        )
+        return dict(row) if row else None
+
+
+async def get_user_by_id(user_id: int) -> dict[str, Any] | None:
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {_USER_COLUMNS}, password_hash FROM users WHERE id = $1",
+            user_id,
+        )
+        return dict(row) if row else None
+
+
+async def create_user(
+    username: str, full_name: str, role: str, password_hash: str
+) -> dict[str, Any]:
+    """Insert a user; raises asyncpg.UniqueViolationError on duplicate."""
+    if _pool is None:
+        raise RuntimeError("PostgreSQL no disponible")
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"INSERT INTO users (username, full_name, role, password_hash) "
+            f"VALUES ($1, $2, $3, $4) RETURNING {_USER_COLUMNS}",
+            username,
+            full_name,
+            role,
+            password_hash,
+        )
+        return dict(row)
+
+
+async def list_users() -> list[dict[str, Any]]:
+    if _pool is None:
+        return []
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT {_USER_COLUMNS} FROM users ORDER BY id"
+        )
+        return [dict(r) for r in rows]
+
+
+async def set_user_disabled(username: str, disabled: bool) -> bool:
+    if _pool is None:
+        return False
+    async with _pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET disabled = $2 WHERE username = $1", username, disabled
+        )
+        return result == "UPDATE 1"
+
+
+async def insert_refresh_token(
+    user_id: int, token_hash: str, expires_at: Any
+) -> int | None:
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        return int(
+            await conn.fetchval(
+                "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) "
+                "VALUES ($1, $2, $3) RETURNING id",
+                user_id,
+                token_hash,
+                expires_at,
+            )
+        )
+
+
+async def get_refresh_token(token_hash: str) -> dict[str, Any] | None:
+    """Fetch a refresh token row joined with its user (for validation)."""
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked, rt.created_at, "
+            "       u.username, u.full_name, u.role, u.disabled "
+            "FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id "
+            "WHERE rt.token_hash = $1",
+            token_hash,
+        )
+        return dict(row) if row else None
+
+
+async def revoke_refresh_token(token_id: int) -> None:
+    if _pool is None:
+        return
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1", token_id
+        )

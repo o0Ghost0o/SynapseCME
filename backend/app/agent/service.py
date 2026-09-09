@@ -14,11 +14,13 @@ from typing import Any, AsyncIterator
 
 from app import db
 from app.agent import extractor as rule_extractor
+from app.agent import rag
 from app.agent.qvac import QvacClient, QvacError
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.core.metrics import InferenceMetrics, build_metrics
 from app.graph import engine
 from app.models import ChatRequest, EquipmentItem, ExtractionResult
+from app.sync import service as sync_service
 
 logger = logging.getLogger("synapse.agent")
 
@@ -54,6 +56,12 @@ Después del JSON no añadas nada más."""
 FALLBACK_ACK = (
     "Entendido. Registré tu observación con el extractor local "
     "(el nodo de inferencia no respondió, así que usé reglas deterministas)."
+)
+
+RAG_INSTRUCTIONS = (
+    "El bloque anterior es conocimiento previo extraído de la base de datos; "
+    "puede estar incompleto. Úsalo para desambiguar facilidades y equipos, "
+    "pero nunca inventes equipos que no aparezcan en el mensaje o en ese contexto."
 )
 
 _client: QvacClient | None = None
@@ -147,10 +155,21 @@ def _extraction_from_llm(data: dict[str, Any], raw: str) -> ExtractionResult | N
         return None
 
 
-async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
-    """Yield SSE-encoded strings for the /api/chat stream."""
+async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) -> AsyncIterator[str]:
+    """Yield SSE-encoded strings for the /api/chat stream.
+
+    ``user`` is the authenticated JWT identity. The client-supplied
+    ``contributor`` field is intentionally ignored: the capturer identity
+    everywhere (Contributor node, MADE_BY, transaction_log actor) is the
+    authenticated user.
+    """
     request_id = uuid.uuid4().hex[:12]
-    contributor = request.contributor or f"anon-{request.client_type or 'web'}"
+    if user is not None:
+        contributor = user["username"]
+        full_name = user.get("full_name")
+    else:
+        contributor = f"anon-{request.client_type or 'web'}"
+        full_name = None
     started = time.perf_counter()
     ttft_ms: int | None = None
     usage: dict[str, Any] | None = None
@@ -158,18 +177,29 @@ async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
     used_fallback = False
     ext: ExtractionResult | None = None
 
-    cold_start = False
+    cold_start = False  # kept for build_metrics signature stability; QVAC preloads models
     client = _client
+
+    system_prompt = EXTRACTION_SYSTEM_PROMPT
     if client is not None:
         try:
-            cold_start = not await client.is_model_loaded()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("No se pudo consultar /api/ps: %s", exc)
+            context_text = await rag.build_context(
+                client,
+                request.message,
+                data_dir=settings.rag_dir,
+                top_k=settings.rag_top_k,
+            )
+            if context_text:
+                system_prompt = (
+                    f"{EXTRACTION_SYSTEM_PROMPT}\n\n{context_text}\n\n{RAG_INSTRUCTIONS}"
+                )
+        except Exception as exc:  # noqa: BLE001 - retrieval must not kill the stream
+            logger.warning("Recuperación de contexto RAG falló; se continúa sin ella: %s", exc)
 
     # 1) Try the LLM pipeline ----------------------------------------------
     if client is not None:
         messages = [
-            {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": request.message},
         ]
         try:
@@ -212,8 +242,19 @@ async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
     # 3) Ingest into the graph ----------------------------------------------
     transaction_ids: list[int] = []
     try:
-        ingest = await engine.ingest_extraction(ext, contributor, request.client_type)
+        ingest = await engine.ingest_extraction(
+            ext, contributor, request.client_type, full_name=full_name
+        )
         transaction_ids = ingest.transaction_ids
+        try:
+            await sync_service.enqueue_extraction(ext, contributor, request.client_type)
+        except Exception:  # noqa: BLE001 - sync must never affect the stream
+            pass
+        if client is not None:
+            try:
+                await rag.index_extraction(client, ext, data_dir=settings.rag_dir)
+            except Exception as exc:  # noqa: BLE001 - indexing must not kill the stream
+                logger.warning("No se pudo indexar la observación: %s", exc)
     except Exception as exc:  # noqa: BLE001 - ingestion must not kill the stream
         logger.exception("Error al ingerir la extracción en el grafo: %s", exc)
 

@@ -31,6 +31,55 @@ export function normalizeHierarchy(data: unknown): HierarchyItem[] {
     .filter((item) => item.name)
 }
 
+/* Árbol anidado real del backend: {regions:[{name, countries:[{name,
+   facilities:[{id,name}]}]}]}. El endpoint /api/hierarchy ignora los query
+   params: siempre devuelve el árbol completo. */
+export interface FacilityRef {
+  id: string
+  name: string
+}
+
+export interface CountryNode {
+  name: string
+  facilities: FacilityRef[]
+}
+
+export interface RegionNode {
+  name: string
+  countries: CountryNode[]
+}
+
+export function normalizeHierarchyTree(data: unknown): RegionNode[] {
+  if (!data || typeof data !== 'object') return []
+  const regions = (data as Record<string, unknown>).regions
+  if (!Array.isArray(regions)) return []
+  return regions
+    .filter((r) => r && typeof r === 'object')
+    .map((r) => {
+      const ro = r as Record<string, unknown>
+      const countries = Array.isArray(ro.countries) ? ro.countries : []
+      return {
+        name: String(ro.name ?? ro.region ?? 'Sin nombre'),
+        countries: countries
+          .filter((c) => c && typeof c === 'object')
+          .map((c) => {
+            const co = c as Record<string, unknown>
+            const facilities = Array.isArray(co.facilities) ? co.facilities : []
+            return {
+              name: String(co.name ?? co.country ?? 'Sin nombre'),
+              facilities: facilities
+                .filter((f) => f && typeof f === 'object')
+                .map((f) => {
+                  const fo = f as Record<string, unknown>
+                  return { id: String(fo.id ?? fo.name ?? ''), name: String(fo.name ?? fo.id ?? '') }
+                })
+                .filter((f) => f.id),
+            }
+          }),
+      }
+    })
+}
+
 export interface EquipmentItem {
   id: string
   modality: string

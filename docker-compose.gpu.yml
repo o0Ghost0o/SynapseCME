@@ -5,8 +5,8 @@
 
 services:
   qvac:
-    # With the NVIDIA device reserved below, Ollama auto-detects and uses the
-    # GPU (full layer offload by default). No extra env vars needed.
+    # With the NVIDIA device reserved below, the QVAC server auto-detects and
+    # uses the GPU (full layer offload by default). No extra env vars needed.
     deploy:
       resources:
         reservations:
@@ -14,3 +14,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # NOTE: speaches also ships a CUDA build (ghcr.io/speaches-ai/speaches:latest-cuda)
+  # that would transcribe much faster on the RTX 3060 Ti. Default stays CPU:
+  # MedPsy already claims ~4.5-6 GB VRAM and field dictation is latency-tolerant.
+  # If you ever enable it, drop this override in and rebuild.
