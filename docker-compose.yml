@@ -110,8 +110,9 @@ services:
     volumes:
       - ${VOLUMES_ROOT:-./volumes}/stt:/home/ubuntu/.cache/huggingface
     healthcheck:
-      # FastAPI app: prefer /health, fall back to /docs.
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health >/dev/null 2>&1 || wget -qO- http://localhost:8000/docs >/dev/null 2>&1 || exit 1"]
+      # FastAPI app: prefer /health, fall back to /docs. The speaches image
+      # has no wget/curl — use python (present in the image).
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=5)\" 2>/dev/null || python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/docs',timeout=5)\" 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 24
