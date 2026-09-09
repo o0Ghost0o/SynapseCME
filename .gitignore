@@ -21,7 +21,7 @@ frontend/ios/
 .vscode/
 
 # Local model files (GGUF imports for the QVAC node)
-models/
+/models/
 
 # Data bind mounts (compose $VOLUMES_ROOT default)
 volumes/
