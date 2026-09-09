@@ -1,0 +1,15 @@
+# Test override: runs the unit test suite in a throwaway container.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm backend-test
+#
+# The image installs the dev dependency group (pytest), which the runtime
+# backend image intentionally excludes. Tests are pure logic (no live
+# Neo4j/Postgres/QVAC needed) and no ports are published; the container runs
+# pytest once and exits.
+services:
+  backend-test:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.test
+    container_name: synapse-backend-test
+    command: ["uv", "run", "pytest"]

@@ -7,26 +7,33 @@ const { lastMutation } = useEvents()
 
 const loading = ref(false)
 const failed = ref(false)
-const regions = ref<HierarchyItem[]>([])
-const countries = ref<HierarchyItem[]>([])
-const facilities = ref<HierarchyItem[]>([])
-const selectedRegion = ref('')
-const selectedCountry = ref('')
+const tree = ref<RegionNode[]>([])
 const facility = ref<FacilityInfo | null>(null)
 const facilityLoading = ref(false)
 
-const crumbs = computed(() => {
-  const list: Array<{ label: string; level: number }> = [{ label: 'Regiones', level: 0 }]
-  if (selectedRegion.value) list.push({ label: selectedRegion.value, level: 1 })
-  if (selectedCountry.value) list.push({ label: selectedCountry.value, level: 2 })
-  return list
-})
+// Expansión del árbol
+const expandedRegions = ref<Set<string>>(new Set())
+const expandedCountries = ref<Set<string>>(new Set())
 
-async function loadRegions() {
+function toggle(set: Set<string>, key: string) {
+  const next = new Set(set)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  return next
+}
+
+const totalFacilities = computed(() =>
+  tree.value.reduce(
+    (acc, r) => acc + r.countries.reduce((a, c) => a + c.facilities.length, 0),
+    0,
+  ),
+)
+
+async function loadTree() {
   loading.value = true
   failed.value = false
   try {
-    regions.value = normalizeHierarchy(await request('/api/hierarchy'))
+    tree.value = normalizeHierarchyTree(await request('/api/hierarchy'))
   } catch {
     failed.value = true
   } finally {
@@ -34,53 +41,15 @@ async function loadRegions() {
   }
 }
 
-async function pickRegion(region: string) {
-  selectedRegion.value = region
-  selectedCountry.value = ''
-  facilities.value = []
-  facility.value = null
-  try {
-    countries.value = normalizeHierarchy(await request(`/api/hierarchy?region=${encodeURIComponent(region)}`))
-  } catch {
-    countries.value = []
-  }
-}
-
-async function pickCountry(country: string) {
-  selectedCountry.value = country
-  facility.value = null
-  try {
-    facilities.value = normalizeHierarchy(
-      await request(
-        `/api/hierarchy?region=${encodeURIComponent(selectedRegion.value)}&country=${encodeURIComponent(country)}`,
-      ),
-    )
-  } catch {
-    facilities.value = []
-  }
-}
-
-async function pickFacility(item: HierarchyItem) {
+async function pickFacility(f: FacilityRef) {
   facilityLoading.value = true
   try {
-    facility.value = normalizeFacility(await request(`/api/facility/${encodeURIComponent(item.id)}`), item.id)
+    facility.value = normalizeFacility(await request(`/api/facility/${encodeURIComponent(f.id)}`), f.id)
   } catch {
     facility.value = null
     show('No se pudo cargar la instalación')
   } finally {
     facilityLoading.value = false
-  }
-}
-
-function goToLevel(level: number) {
-  if (level === 0) {
-    selectedRegion.value = ''
-    selectedCountry.value = ''
-    countries.value = []
-    facilities.value = []
-    facility.value = null
-  } else if (level === 1) {
-    pickRegion(selectedRegion.value)
   }
 }
 
@@ -100,13 +69,9 @@ const RENEWAL_STATES = ['estimado', 'confirmado']
 const renewalOpportunities = computed(() => {
   if (!facility.value) return []
   return facility.value.equipment.filter(
-    (eq) => eq.age !== null && eq.age >= 8 && RENEWAL_STATES.includes(stateToneLabel(eq)),
+    (eq) => eq.age !== null && eq.age >= 8 && RENEWAL_STATES.includes(eq.state.toLowerCase()),
   )
 })
-
-function stateToneLabel(eq: EquipmentItem): string {
-  return eq.state.toLowerCase()
-}
 
 function freshness(updatedAt: string): string {
   if (!updatedAt) return 'Sin fecha'
@@ -119,93 +84,97 @@ function freshness(updatedAt: string): string {
   return `Hace ${Math.floor(days / 365)} años`
 }
 
-// Refresco en vivo cuando llega una mutación por WS (con debounce)
+// Refresco en vivo: debounce de 2 s para no refetchear el árbol en ráfagas.
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 watch(lastMutation, () => {
   clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => {
     if (facility.value) void pickFacility({ id: facility.value.id, name: facility.value.name })
-    else void loadRegions()
-  }, 600)
+    void loadTree()
+  }, 2000)
 })
 
-onMounted(loadRegions)
+onMounted(loadTree)
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <div>
-      <h1 class="text-2xl font-bold text-white">Panel 360 — Cliente</h1>
-      <p class="mt-1 text-sm text-slate-400">
-        Explora región → país → instalación y revisa el estado de la base instalada.
-      </p>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-white">Panel 360 — Cliente</h1>
+        <p class="mt-1 text-sm text-slate-400">
+          Explora la jerarquía región → país → instalación y revisa el estado de la base instalada.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span v-if="tree.length" class="glass-chip">{{ tree.length }} regiones · {{ totalFacilities }} instalaciones</span>
+        <button class="btn-ghost" :disabled="loading" @click="loadTree">
+          {{ loading ? 'Actualizando…' : 'Actualizar' }}
+        </button>
+      </div>
     </div>
 
-    <ApiUnavailable v-if="failed" @retry="loadRegions" />
-    <div v-else-if="loading" class="glass p-10 text-center text-sm text-slate-400">
+    <ApiUnavailable v-if="failed" @retry="loadTree" />
+    <div v-else-if="loading && !tree.length" class="glass p-10 text-center text-sm text-slate-400">
       <span class="animate-pulse">Cargando jerarquía…</span>
     </div>
 
-    <div v-else class="grid gap-4 lg:grid-cols-[320px_1fr]">
-      <!-- Panel de jerarquía -->
-      <div class="glass p-4">
+    <div v-else class="grid gap-4 lg:grid-cols-[360px_1fr]">
+      <!-- Árbol de jerarquía -->
+      <div class="glass max-h-[75vh] overflow-y-auto p-4">
         <h2 class="text-sm font-semibold text-white">Jerarquía</h2>
-        <nav class="mt-2 flex flex-wrap items-center gap-1 text-xs text-slate-400">
-          <template v-for="(crumb, i) in crumbs" :key="i">
-            <span v-if="i" class="text-slate-600">/</span>
-            <button
-              class="rounded-lg px-1.5 py-0.5 transition hover:bg-white/10 hover:text-white"
-              :class="i === crumbs.length - 1 ? 'font-semibold text-white' : ''"
-              @click="goToLevel(crumb.level)"
-            >
-              {{ crumb.label }}
-            </button>
-          </template>
-        </nav>
+        <p class="mt-0.5 text-xs text-slate-500">Regiones · Países · Instalaciones</p>
 
         <div class="mt-3 flex flex-col gap-1.5">
-          <button
-            v-if="!selectedRegion"
-            v-for="item in regions"
-            :key="item.id"
-            class="btn-ghost justify-between text-left"
-            @click="pickRegion(item.name)"
-          >
-            <span>🌍 {{ item.name }}</span>
-            <span class="text-slate-500">→</span>
-          </button>
+          <div v-for="region in tree" :key="`r-${region.name}`">
+            <button
+              class="btn-ghost w-full justify-between text-left"
+              @click="expandedRegions = toggle(expandedRegions, region.name)"
+            >
+              <span class="flex items-center gap-2">
+                <span class="text-slate-400 transition" :class="expandedRegions.has(region.name) ? 'rotate-90' : ''">▸</span>
+                🌍 {{ region.name }}
+              </span>
+              <span class="glass-chip">{{ region.countries.length }} países</span>
+            </button>
 
-          <button
-            v-else-if="!selectedCountry"
-            v-for="item in countries"
-            :key="item.id"
-            class="btn-ghost justify-between text-left"
-            @click="pickCountry(item.name)"
-          >
-            <span>🏳️ {{ item.name }}</span>
-            <span class="text-slate-500">→</span>
-          </button>
+            <div v-if="expandedRegions.has(region.name)" class="ml-4 mt-1.5 flex flex-col gap-1.5 border-l border-white/10 pl-3">
+              <div v-for="country in region.countries" :key="`c-${region.name}-${country.name}`">
+                <button
+                  class="btn-ghost w-full justify-between text-left"
+                  @click="expandedCountries = toggle(expandedCountries, `${region.name}/${country.name}`)"
+                >
+                  <span class="flex items-center gap-2">
+                    <span class="text-slate-400 transition" :class="expandedCountries.has(`${region.name}/${country.name}`) ? 'rotate-90' : ''">▸</span>
+                    🏳️ {{ country.name }}
+                  </span>
+                  <span class="glass-chip">{{ country.facilities.length }}</span>
+                </button>
 
-          <button
-            v-else
-            v-for="item in facilities"
-            :key="item.id"
-            class="btn-ghost justify-between text-left"
-            @click="pickFacility(item)"
-          >
-            <span>🏥 {{ item.name }}</span>
-            <span class="text-slate-500">→</span>
-          </button>
+                <div
+                  v-if="expandedCountries.has(`${region.name}/${country.name}`)"
+                  class="ml-4 mt-1.5 flex flex-col gap-1 border-l border-white/10 pl-3"
+                >
+                  <button
+                    v-for="f in country.facilities"
+                    :key="`f-${f.id}`"
+                    class="btn-ghost justify-between text-left"
+                    :class="facility?.id === f.id ? 'border-indigo-300/40 bg-indigo-400/20' : ''"
+                    @click="pickFacility(f)"
+                  >
+                    <span>🏥 {{ f.name }}</span>
+                    <span class="text-slate-500">→</span>
+                  </button>
+                  <p v-if="!country.facilities.length" class="rounded-lg border border-dashed border-white/10 px-3 py-1.5 text-[11px] text-slate-500">
+                    Sin instalaciones registradas
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          <p
-            v-if="
-              (!selectedRegion && !regions.length) ||
-              (selectedRegion && !selectedCountry && !countries.length) ||
-              (selectedCountry && !facilities.length)
-            "
-            class="rounded-xl border border-dashed border-white/15 p-4 text-center text-xs text-slate-500"
-          >
-            Sin datos en este nivel
+          <p v-if="!tree.length" class="rounded-xl border border-dashed border-white/15 p-6 text-center text-xs text-slate-500">
+            Sin datos de jerarquía todavía.
           </p>
         </div>
       </div>
@@ -284,7 +253,7 @@ onMounted(loadRegions)
         <div v-else class="glass flex flex-1 flex-col items-center justify-center p-10 text-center">
           <p class="text-4xl">🏥</p>
           <p class="mt-3 max-w-xs text-sm text-slate-400">
-            Selecciona una región, un país y una instalación para ver el detalle de su equipamiento.
+            Expande una región y un país en el árbol y selecciona una instalación para ver su ficha 360.
           </p>
         </div>
       </div>

@@ -147,10 +147,21 @@ def _extraction_from_llm(data: dict[str, Any], raw: str) -> ExtractionResult | N
         return None
 
 
-async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
-    """Yield SSE-encoded strings for the /api/chat stream."""
+async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) -> AsyncIterator[str]:
+    """Yield SSE-encoded strings for the /api/chat stream.
+
+    ``user`` is the authenticated JWT identity. The client-supplied
+    ``contributor`` field is intentionally ignored: the capturer identity
+    everywhere (Contributor node, MADE_BY, transaction_log actor) is the
+    authenticated user.
+    """
     request_id = uuid.uuid4().hex[:12]
-    contributor = request.contributor or f"anon-{request.client_type or 'web'}"
+    if user is not None:
+        contributor = user["username"]
+        full_name = user.get("full_name")
+    else:
+        contributor = f"anon-{request.client_type or 'web'}"
+        full_name = None
     started = time.perf_counter()
     ttft_ms: int | None = None
     usage: dict[str, Any] | None = None
@@ -212,7 +223,9 @@ async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
     # 3) Ingest into the graph ----------------------------------------------
     transaction_ids: list[int] = []
     try:
-        ingest = await engine.ingest_extraction(ext, contributor, request.client_type)
+        ingest = await engine.ingest_extraction(
+            ext, contributor, request.client_type, full_name=full_name
+        )
         transaction_ids = ingest.transaction_ids
     except Exception as exc:  # noqa: BLE001 - ingestion must not kill the stream
         logger.exception("Error al ingerir la extracción en el grafo: %s", exc)

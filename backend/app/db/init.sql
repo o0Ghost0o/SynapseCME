@@ -43,3 +43,27 @@ CREATE TABLE IF NOT EXISTS transaction_log (
 CREATE INDEX IF NOT EXISTS idx_tx_log_created ON transaction_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_log_action ON transaction_log (action);
 CREATE INDEX IF NOT EXISTS idx_perf_log_created ON perf_log (created_at DESC);
+
+-- Auth: users and refresh-token rotation. The backend also creates these
+-- idempotently at startup (db.ensure_schema) for deployments whose data dir
+-- was initialized before this file existed.
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'capturer', 'viewer')),
+    password_hash TEXT NOT NULL,
+    disabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id);

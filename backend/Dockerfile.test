@@ -1,0 +1,21 @@
+# Test image: same app as the runtime image, but with the dev dependency
+# group (pytest) installed. Used by docker-compose.test.yml; never deployed.
+# Build context is the repo root (needs data/synthetic for the seed tests).
+FROM python:3.12-slim
+
+# uv binary from the official image (same pattern as the runtime Dockerfile)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-install-project
+
+COPY backend/app ./app
+COPY backend/tests ./tests
+COPY data ./data
+RUN uv sync --frozen
+
+CMD ["uv", "run", "pytest"]

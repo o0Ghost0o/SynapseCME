@@ -13,7 +13,18 @@ class Settings(BaseSettings):
     medpsy_model: str = "medpsy:q4_k_m"
     embed_model: str = "bge-m3"
 
+    stt_base_url: str = "http://stt:8000"
+    stt_model: str = "Systran/faster-whisper-small"
+
     cors_origins: str = "*"
+
+    # Auth. Defaults are development-only; the app logs loud warnings when
+    # they are used.
+    jwt_secret: str = "synapse-dev-jwt-secret-cambiame-2026"
+    admin_user: str = "admin"
+    admin_password: str = "synapse-admin"
+    access_token_ttl_seconds: int = 900  # 15 minutes
+    refresh_token_ttl_days: int = 7
 
 
 settings = Settings()

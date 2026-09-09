@@ -10,20 +10,83 @@ interface ChatMessage {
   error?: boolean
 }
 
-const { apiBase } = useApi()
+const { fetchWithAuth } = useApi()
 const { show } = useToast()
 const { apiOnline, refresh } = useConnection()
 const { ensure } = useEvents()
+const { user } = useAuth()
 
 onMounted(() => {
   ensure({ client_type: 'field_app', name: 'App de campo SynapseCME' })
 })
 
 const input = ref('')
-const contributor = ref('')
 const sending = ref(false)
 const messages = ref<ChatMessage[]>([])
 const listEl = ref<HTMLElement | null>(null)
+
+// —— Dictado (STT) ——
+const captureEl = ref<HTMLTextAreaElement | null>(null)
+const dictating = ref(false)
+const transcribing = ref(false)
+let mediaRecorder: MediaRecorder | null = null
+let recorderMime = ''
+let recordChunks: Blob[] = []
+let recordTimer: ReturnType<typeof setTimeout> | undefined
+const MAX_RECORDING_MS = 60000
+
+async function toggleDictation() {
+  if (dictating.value) {
+    mediaRecorder?.stop()
+    return
+  }
+  if (transcribing.value) return
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    recordChunks = []
+    mediaRecorder = new MediaRecorder(stream)
+    recorderMime = mediaRecorder.mimeType || 'audio/webm'
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size) recordChunks.push(e.data)
+    }
+    mediaRecorder.onstop = () => {
+      clearTimeout(recordTimer)
+      stream.getTracks().forEach((t) => t.stop())
+      dictating.value = false
+      void uploadRecording()
+    }
+    mediaRecorder.start()
+    dictating.value = true
+    recordTimer = setTimeout(() => mediaRecorder?.stop(), MAX_RECORDING_MS)
+  } catch {
+    dictating.value = false
+    show('Permiso de micrófono denegado')
+  }
+}
+
+async function uploadRecording() {
+  if (!recordChunks.length) return
+  const blob = new Blob(recordChunks, { type: recorderMime })
+  transcribing.value = true
+  try {
+    const form = new FormData()
+    form.append('file', blob, 'dictation.webm')
+    const res = await fetchWithAuth('/api/stt', { method: 'POST', body: form })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = (await res.json()) as { text?: string }
+    const text = typeof data.text === 'string' ? data.text.trim() : ''
+    if (!text) {
+      show('No se entendió el audio, intenta de nuevo')
+    } else {
+      input.value = input.value.trim() ? `${input.value.trim()} ${text}` : text
+      nextTick(() => captureEl.value?.focus())
+    }
+  } catch {
+    show('Dictado no disponible')
+  } finally {
+    transcribing.value = false
+  }
+}
 
 const FIELD_DEFS: Array<{ key: string; label: string; aliases: string[] }> = [
   { key: 'instalacion', label: 'Instalación', aliases: ['instalacion', 'installation', 'facility', 'hospital', 'site'] },
@@ -110,12 +173,11 @@ async function send() {
   sending.value = true
   scrollDown()
   try {
-    const res = await fetch(`${apiBase}/api/chat`, {
+    const res = await fetchWithAuth('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: text,
-        contributor: contributor.value.trim() || undefined,
         client_type: 'field_app',
       }),
     })
@@ -169,9 +231,14 @@ const confirmed = reactive<Record<number, boolean>>({})
           Describe en lenguaje natural el equipamiento instalado; el agente extrae la estructura al grafo.
         </p>
       </div>
-      <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200">
-        <span>📱</span> Modo: App de campo
-      </span>
+      <div class="flex flex-wrap items-center gap-2">
+        <span v-if="user" class="glass-chip border-emerald-300/30 bg-emerald-400/15 text-emerald-200">
+          ✍️ Capturando como {{ user.full_name || user.username }}
+        </span>
+        <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200">
+          <span>📱</span> Modo: App de campo
+        </span>
+      </div>
     </div>
 
     <div
@@ -254,20 +321,12 @@ const confirmed = reactive<Record<number, boolean>>({})
     </div>
 
     <div class="glass p-4">
-      <label for="contributor" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
-        Capturador (opcional)
-      </label>
-      <input
-        id="contributor"
-        v-model="contributor"
-        class="glass-input mb-3 py-2 text-sm"
-        placeholder="Nombre del técnico o comercial"
-      />
       <label for="capture" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
         Captura rápida
       </label>
       <textarea
         id="capture"
+        ref="captureEl"
         v-model="input"
         rows="4"
         class="glass-input resize-none text-base leading-relaxed"
@@ -275,8 +334,21 @@ const confirmed = reactive<Record<number, boolean>>({})
         :disabled="sending"
         @keydown.enter.exact.prevent="send"
       />
-      <div class="mt-3 flex items-center justify-between gap-3">
-        <p class="text-xs text-slate-500">Enter para enviar · Mayús+Enter para salto de línea</p>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <button
+            class="btn-ghost"
+            :class="dictating ? 'border-rose-300/40 bg-rose-400/20 text-rose-200' : ''"
+            :disabled="transcribing"
+            :title="dictating ? 'Detener dictado' : 'Dictar con el micrófono'"
+            @click="toggleDictation"
+          >
+            <span :class="dictating ? 'animate-pulse' : ''">{{ dictating ? '■' : '🎙️' }}</span>
+            {{ dictating ? 'Escuchando…' : transcribing ? 'Transcribiendo…' : 'Dictar' }}
+          </button>
+          <p v-if="dictating" class="text-xs text-rose-300">Toca de nuevo para detener</p>
+        </div>
+        <p class="hidden text-xs text-slate-500 lg:block">Enter para enviar · Mayús+Enter para salto de línea</p>
         <button class="btn-primary min-w-36" :disabled="sending || !input.trim()" @click="send">
           {{ sending ? 'Procesando…' : 'Enviar al agente' }}
         </button>
