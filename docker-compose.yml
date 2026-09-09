@@ -52,8 +52,11 @@ services:
     environment:
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
       EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
-      # Phase 2: Pear/HTTP URL for P2P model fetch. Empty = registry/local only.
-      QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-}
+      # Phase 2: Pear/HTTP URL for P2P model fetch. Default = official MedPsy
+      # Q4_K_M (imatrix) from HuggingFace: QVAC downloads and caches it on
+      # first load, so a fresh deployment serves the LLM without manual steps.
+      # Override with a local drop: place the GGUF at ./models/medpsy.gguf.
+      QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-https://huggingface.co/qvac/MedPsy-1.7B-GGUF/resolve/main/medpsy-1.7b-q4_k_m-imat.gguf}
       QVAC_PORT: "11434"
       QVAC_HOST: 0.0.0.0
     volumes:

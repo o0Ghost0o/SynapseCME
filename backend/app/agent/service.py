@@ -24,34 +24,39 @@ from app.sync import service as sync_service
 
 logger = logging.getLogger("synapse.agent")
 
-EXTRACTION_SYSTEM_PROMPT = """Eres el agente de SynapseCME, una plataforma de inteligencia \
-sobre equipos médicos instalados en hospitales. Un ingeniero de campo te envía una \
-observación en español sobre una visita a un hospital.
+# Model-facing prompt in ENGLISH: MedPsy (qvac/MedPsy-1.7B) is an
+# English-only model — Spanish system instructions degrade instruction
+# following. The field observation itself stays in Spanish; MedPsy handles
+# short entity-rich Spanish sentences fine. The follow-up question must be
+# in Spanish because it is shown verbatim to the user.
+EXTRACTION_SYSTEM_PROMPT = """You are the SynapseCME agent, an intelligence platform for \
+medical equipment installed in hospitals. A field engineer sends you an observation in \
+Spanish about a hospital visit.
 
-Extrae entidades estructuradas y responde ÚNICAMENTE con un objeto JSON (sin texto fuera \
-del JSON) con esta forma exacta:
+Extract structured entities and reply with ONLY a JSON object (no text outside the \
+JSON) with this exact shape:
 {
-  "facility": "nombre del hospital o clínica",
-  "city": "ciudad o null",
-  "country": "país o null",
+  "facility": "hospital or clinic name",
+  "city": "city or null",
+  "country": "country or null",
   "items": [
     {
       "modality": "MR|CT|XR|UL|MG|RF",
-      "manufacturer": "fabricante o null",
-      "model": "modelo o null",
+      "manufacturer": "manufacturer or null",
+      "model": "model or null",
       "quantity": 1,
       "age_years": null,
       "confidence": 0.0
     }
   ],
-  "followup": "pregunta corta de seguimiento si falta un dato clave (fabricante de RM/TC), o null"
+  "followup": "short follow-up question in Spanish if a key datum is missing (MR/CT manufacturer), or null"
 }
 
-Códigos de modalidad: resonancia magnética=MR, tomógrafo/TC=CT, rayos X=XR, \
-ultrasonido=UL, mamografía=MG, fluoroscopia/C-arm=RF. Usa null para lo desconocido. \
-confidence entre 0 y 1 según claridad del dato.
+Modality codes: resonancia magnética/MRI=MR, tomógrafo/CT scanner=CT, rayos X/X-ray=XR, \
+ultrasonido/ultrasound=UL, mamografía/mammography=MG, fluoroscopia/C-arm=RF. Use null for \
+unknown fields. confidence between 0 and 1 reflecting how clear the datum is.
 
-Después del JSON no añadas nada más."""
+Do not add anything after the JSON."""
 
 FALLBACK_ACK = (
     "Entendido. Registré tu observación con el extractor local "
@@ -59,9 +64,9 @@ FALLBACK_ACK = (
 )
 
 RAG_INSTRUCTIONS = (
-    "El bloque anterior es conocimiento previo extraído de la base de datos; "
-    "puede estar incompleto. Úsalo para desambiguar facilidades y equipos, "
-    "pero nunca inventes equipos que no aparezcan en el mensaje o en ese contexto."
+    "The block above is prior knowledge retrieved from the database; "
+    "it may be incomplete. Use it to disambiguate facilities and equipment, "
+    "but never invent equipment that does not appear in the message or in that context."
 )
 
 _client: QvacClient | None = None
