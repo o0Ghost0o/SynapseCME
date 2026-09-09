@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# git-pull-listener: watch the upstream of the currently checked-out branch
-# (origin/<branch>); on new commits pull and refresh the Docker stack,
-# notifying a Discord webhook about each deployment.
+# git-pull-listener: watch origin/main; on new commits check out main, pull
+# and refresh the Docker stack, notifying a Discord webhook about each
+# deployment. Only main is ever deployed — other branches are ignored.
 # Run as a systemd user service (see
 # ~/.config/systemd/user/synapse-pull-listener.service).
 #
@@ -35,13 +35,10 @@ notify_discord() {
     | grep -q '^2' || log "WARN: no se pudo enviar notificación a Discord"
 }
 
-BRANCH="$(git branch --show-current)"
-if [ -z "$BRANCH" ]; then
-  log "ERROR: HEAD detached; el listener necesita un branch checked out. Saliendo."
-  exit 1
-fi
+# CI/CD fijo: solo main se escucha y solo main se despliega.
+BRANCH="main"
 if ! git rev-parse --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
-  log "WARN: no existe origin/$BRANCH; se intentará con git pull --ff-only de todos modos"
+  log "WARN: no existe origin/$BRANCH aún; se creará con el primer fetch"
 fi
 log "Escuchando cambios en origin/$BRANCH cada ${INTERVAL}s (repo: $REPO_DIR)"
 
@@ -61,19 +58,31 @@ while true; do
     continue
   fi
 
-  local_head="$(git rev-parse HEAD)"
+  local_head="$(git rev-parse "$BRANCH" 2>/dev/null || echo "")"
   remote_head="$(git rev-parse "$remote_ref")"
 
   if [ "$local_head" != "$remote_head" ]; then
-    n_commits="$(git rev-list --count HEAD.."$remote_ref")"
-    pending="$(git log --oneline --max-count=5 HEAD.."$remote_ref" | sed 's/^/  /')"
-    [ "$n_commits" -gt 5 ] && pending="$pending\n  … y $((n_commits - 5)) más"
+    n_commits="$(git rev-list --count "$BRANCH".."$remote_ref" 2>/dev/null || echo "?")"
+    pending="$(git log --oneline --max-count=5 "$BRANCH".."$remote_ref" 2>/dev/null | sed 's/^/  /')"
+    [ "$n_commits" != "?" ] && [ "$n_commits" -gt 5 ] && pending="$pending\n  … y $((n_commits - 5)) más"
     notify_discord "$(printf '🚀 **Desplegando SynapseCME** (%s) — %d commit(s) nuevos:\n```\n%s\n```' "$BRANCH" "$n_commits" "$pending")"
     log "Nuevos commits en $remote_ref: $n_commits"
 
-    if ! git pull --ff-only 2>&1; then
-      log "ERROR: pull --ff-only rechazado (¿commits locales sin push?); se omite este ciclo"
-      notify_discord "⚠️ **Despliegue abortado** — pull --ff-only rechazado en $BRANCH (¿hay commits locales sin push?)."
+    # Asegurar checkout en main antes de actualizar: nunca se despliega
+    # desde otro branch, esté o no esté checkout-eado en el repo.
+    if [ "$(git branch --show-current)" != "$BRANCH" ]; then
+      log "Cambiando de $(git branch --show-current) a $BRANCH..."
+      if ! git checkout "$BRANCH" 2>&1; then
+        log "ERROR: no se pudo hacer checkout de $BRANCH; se omite este ciclo"
+        notify_discord "⚠️ **Despliegue abortado** — no se pudo hacer checkout de \`$BRANCH\` (¿working tree sucio?)."
+        sleep "$INTERVAL"
+        continue
+      fi
+    fi
+
+    if ! git merge --ff-only "$remote_ref" 2>&1; then
+      log "ERROR: merge --ff-only rechazado (¿commits locales sin push?); se omite este ciclo"
+      notify_discord "⚠️ **Despliegue abortado** — merge --ff-only rechazado en $BRANCH (¿hay commits locales sin push?)."
       sleep "$INTERVAL"
       continue
     fi
