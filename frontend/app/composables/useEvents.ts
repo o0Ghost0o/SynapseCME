@@ -93,13 +93,21 @@ function scheduleReconnect(connectFn: () => void) {
 
 export function useEvents() {
   const config = useRuntimeConfig()
-  const wsBase = (config.public.wsBase as string).replace(/\/$/, '')
+  // wsBase vacío = derivar del origen actual (pasarela Caddy expone /ws/*).
+  const wsBase = ((config.public.wsBase as string | undefined) || '').replace(/\/$/, '')
+
+  function wsUrl(): string {
+    if (wsBase) return `${wsBase}/ws/events`
+    if (typeof window === 'undefined') return 'ws://localhost:3000/ws/events'
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${window.location.host}/ws/events`
+  }
 
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     status.value = 'connecting'
     try {
-      ws = new WebSocket(`${wsBase}/ws/events`)
+      ws = new WebSocket(wsUrl())
     } catch {
       status.value = 'offline'
       scheduleReconnect(connect)

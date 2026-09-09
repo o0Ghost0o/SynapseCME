@@ -1,0 +1,17 @@
+# SynapseCME gateway — single public entrypoint.
+# Serves the Nuxt app and proxies API + WebSocket to the backend, so the
+# browser only ever talks to one origin (e.g. synapse_cme.vertexdc.com:3000).
+
+:3000 {
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /ws/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

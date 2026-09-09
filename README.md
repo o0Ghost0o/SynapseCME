@@ -48,13 +48,13 @@ docker compose up -d
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-El servicio QVAC **descarga los modelos automáticamente al primer arranque** (y solo si faltan en el volumen persistente `qvac_models`): hace `ollama pull` de `medpsy:q4_k_m` y `bge-m3`. Si MedPsy no está en el registro, coloca su GGUF en `./models/medpsy.gguf` y el entrypoint lo importa con `ollama create`. `./scripts/pull-models.sh` sigue disponible para actualizaciones manuales.
+El servicio QVAC **descarga los modelos automáticamente al primer arranque** (y solo si faltan en el directorio persistente): hace `ollama pull` de `medpsy:q4_k_m` y `bge-m3`. Si MedPsy no está en el registro, coloca su GGUF en `./models/medpsy.gguf` y el entrypoint lo importa con `ollama create`. `./scripts/pull-models.sh` sigue disponible para actualizaciones manuales.
 
-Servicios: frontend en `http://localhost:3000`, API en `http://localhost:8000`, Neo4j Browser en `http://localhost:7474`, QVAC en `http://localhost:11434`.
+Servicios: **solo el gateway es público** — `http://localhost:3000` (o `https://synapse_cme.vertexdc.com` tras tu proxy) sirve la app y enruta `/api/*` y `/ws/*` al backend. Neo4j, PostgreSQL, QVAC y el backend son internos (accesibles vía `docker compose exec` si necesitas mantenimiento; para abrir el Neo4j Browser o la API localmente, publica el puerto temporalmente en `docker-compose.yml`).
 
 ### Persistencia
 
-Los datos sobreviven reinicios y recreación de contenedores vía volúmenes Docker: `neo4j_data` (grafo), `pg_data` (estado operativo, métricas y log de transacciones) y `qvac_models` (modelos descargados, para no repetir pulls de GB). `docker compose down -v` es la forma de borrarlo todo.
+Los datos sobreviven reinicios y recreación de contenedores vía bind mounts bajo `$VOLUMES_ROOT` (default `./volumes`): `neo4j/` (grafo), `postgres/` (estado operativo, métricas y log de transacciones) y `qvac/` (modelos descargados, para no repetir pulls de GB). Para borrarlo todo: `docker compose down` y elimina esos directorios del host.
 
 ### Datos sintéticos y pruebas
 

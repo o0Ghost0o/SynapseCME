@@ -1,4 +1,7 @@
-FROM ghcr.io/astral-sh/uv:python3.12-slim
+FROM python:3.12-slim
+
+# uv binary from the official image (documented pattern for slim bases)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 

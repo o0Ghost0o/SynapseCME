@@ -9,9 +9,8 @@ defineEmits<{ retry: [] }>()
     </div>
     <h2 class="text-xl font-bold text-white">Servidor local no disponible</h2>
     <p class="mt-2 text-sm leading-relaxed text-slate-300">
-      No se pudo contactar con la API de SynapseCME. Comprueba que el backend esté
-      en marcha (<code class="rounded bg-white/10 px-1.5 py-0.5 text-xs">http://localhost:8000</code>)
-      y vuelve a intentarlo.
+      No se pudo contactar con la API de SynapseCME. Comprueba que la pasarela y el
+      backend estén en marcha en este mismo origen y vuelve a intentarlo.
     </p>
     <button class="btn-primary mt-5" @click="$emit('retry')">Reintentar conexión</button>
   </div>

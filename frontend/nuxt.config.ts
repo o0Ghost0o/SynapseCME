@@ -16,8 +16,9 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000',
-      wsBase: process.env.NUXT_PUBLIC_WS_BASE || 'ws://localhost:8000',
+      // Vacío = mismo origen (la pasarela Caddy expone /api/* y /ws/* en el puerto 3000).
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
+      wsBase: process.env.NUXT_PUBLIC_WS_BASE || '',
     },
   },
   app: {
