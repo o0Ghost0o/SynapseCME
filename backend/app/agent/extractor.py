@@ -111,6 +111,11 @@ def _detect_facility(text: str) -> str | None:
     return None
 
 
+def detect_facility(text: str) -> str | None:
+    """Public wrapper: facility name when the text mentions one, else None."""
+    return _detect_facility(text)
+
+
 def _detect_country(text: str) -> str | None:
     lowered = text.lower()
     for country in COUNTRIES:

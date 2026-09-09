@@ -108,6 +108,8 @@ services:
         condition: service_healthy
       qvac:
         condition: service_healthy
+    volumes:
+      - rag_data:/data/rag
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
@@ -147,3 +149,4 @@ services:
 volumes:
   qvac_models:
   qvac_npm_cache:
+  rag_data:

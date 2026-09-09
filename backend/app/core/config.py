@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     medpsy_model: str = "medpsy:q4_k_m"
     embed_model: str = "bge-m3"
 
+    rag_dir: str = "/data/rag"
+    rag_top_k: int = 3
+
     cors_origins: str = "*"
 
 
