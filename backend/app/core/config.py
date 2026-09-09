@@ -11,7 +11,10 @@ class Settings(BaseSettings):
 
     qvac_base_url: str = "http://localhost:11434"
     medpsy_model: str = "medpsy:q4_k_m"
-    embed_model: str = "bge-m3"
+    # QVAC SDK constant (built-in, verified to load). bge-m3 also works but
+    # only through a GGUF the QVAC embeddings addon accepts (drop it in
+    # ./models/ or set QVAC_MODEL_SOURCE).
+    embed_model: str = "EMBEDDINGGEMMA_300M_Q4_0"
 
     rag_dir: str = "/data/rag"
     rag_top_k: int = 3

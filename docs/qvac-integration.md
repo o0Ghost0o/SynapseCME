@@ -28,7 +28,8 @@ stays only as an opt-in fallback (compose profile `ollama`), never the default.
 
 ## Phase 1 — real GraphRAG (embeddings + retrieval in the loop)
 
-- `app/agent/rag.py`: embedding texts via `POST /v1/embeddings` (bge-m3), a
+- `app/agent/rag.py`: embedding texts via `POST /v1/embeddings` (QVAC embed
+  model; default `EMBEDDINGGEMMA_300M_Q4_0` built-in constant), a
   LanceDB index over observation texts + equipment summaries (persisted under
   `VOLUMES_ROOT`), retrieval of top-k neighbors for a message.
 - `app/graph/context.py`: graph-neighborhood context (facility → equipment →

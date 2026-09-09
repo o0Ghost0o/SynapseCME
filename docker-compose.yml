@@ -44,14 +44,14 @@ services:
   # Runs CPU-only by default, so the stack works on any machine.
   # On the NVIDIA node (RTX 3060 Ti), apply the GPU override:
   #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-  # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + bge-m3 (~1.2 GB) <= 6 GB.
+  # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + embeddings (~0.3 GB) <= 6 GB.
   qvac:
     image: node:22-bookworm-slim
     container_name: synapse-qvac
     entrypoint: ["/qvac-server-entrypoint.sh"]
     environment:
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
-      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
       # Phase 2: Pear/HTTP URL for P2P model fetch. Empty = registry/local only.
       QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-}
       QVAC_PORT: "11434"
@@ -84,7 +84,7 @@ services:
       OLLAMA_NUM_PARALLEL: "2"
       OLLAMA_KEEP_ALIVE: 30m
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
-      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
     volumes:
       - ${VOLUMES_ROOT:-./volumes}/qvac:/root/.ollama
       - ./scripts/qvac-entrypoint.sh:/qvac-entrypoint.sh:ro
@@ -100,7 +100,7 @@ services:
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse-local-dev}@postgres:5432/${POSTGRES_DB:-synapse_state}
       QVAC_BASE_URL: http://qvac:11434
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
-      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
       # Phase 3 — node-to-node observation sync. Empty SYNC_PEERS = sync off;
       # empty SYNC_TOKEN = /api/sync/ingest answers 404 (endpoint closed).
       SYNC_PEERS: ${SYNC_PEERS:-}
