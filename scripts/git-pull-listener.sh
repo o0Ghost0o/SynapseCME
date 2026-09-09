@@ -53,7 +53,7 @@ notify_discord() {
   local content="$1"
   [ -n "${DISCORD_DEPLOY_WEBHOOK:-}" ] || return 0
   jq -n --arg content "$content" '{content: $content}' \
-    | curl -sS -o /dev/null -w '%{http_code}' -X POST \
+    | curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -X POST \
         -H 'Content-Type: application/json' \
         --data-binary @- "$DISCORD_DEPLOY_WEBHOOK" \
     | grep -q '^2' || log "WARN: no se pudo enviar notificación a Discord"
@@ -64,13 +64,13 @@ BRANCH="main"
 if ! git rev-parse --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
   log "WARN: no existe origin/$BRANCH aún; se creará con el primer fetch"
 fi
-# El estado desplegado se compara contra origin/main vía un archivo de estado,
-# no contra el branch local: si se hace push desde ESTA máquina, el branch
-# local ya está actualizado y una comparación local-vs-remote nunca dispararía
-# el deploy.
-STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/synapsecme-deployed.sha"
-mkdir -p "$(dirname "$STATE_FILE")"
-log "Escuchando cambios en origin/$BRANCH cada ${INTERVAL}s (repo: $REPO_DIR, estado: $STATE_FILE)"
+# El estado desplegado vive en un ref del propio repo (refs/deployed/main),
+# no en un archivo de $HOME: esta caja tiene el $HOME sobre un btrfs DEGRADED
+# que perdió escrituras silenciosamente. .git está en /mnt/jboda, storage
+# sano. Comparar contra el branch local no sirve: un push hecho DESDE esta
+# máquina ya tiene el branch local actualizado y nunca dispararía deploy.
+DEPLOYED_REF="refs/deployed/main"
+log "Escuchando cambios en origin/$BRANCH cada ${INTERVAL}s (repo: $REPO_DIR, estado: $DEPLOYED_REF)"
 
 while true; do
   # `git fetch origin` (sin refspec) actualiza TODAS las remote-tracking refs;
@@ -89,13 +89,12 @@ while true; do
   fi
   remote_head="$(git rev-parse "$remote_ref")"
 
-  deployed_sha=""
-  [ -f "$STATE_FILE" ] && deployed_sha="$(tr -d '[:space:]' < "$STATE_FILE")"
+  deployed_sha="$(git rev-parse --verify -q "$DEPLOYED_REF" || true)"
   if [ -z "$deployed_sha" ]; then
-    # Primera corrida (o estado perdido): tomar el HEAD actual como base sin
+    # Primera corrida (o ref perdido): tomar el HEAD actual como base sin
     # desplegar; el próximo commit nuevo dispara el deploy.
     deployed_sha="$remote_head"
-    printf '%s\n' "$remote_head" > "$STATE_FILE"
+    git update-ref "$DEPLOYED_REF" "$remote_head"
     log "Sin estado previo de despliegue; base = $(git rev-parse --short "$remote_head"). El próximo commit nuevo dispara deploy."
   fi
 
@@ -140,8 +139,8 @@ while true; do
 
     if [ "$compose_rc" -eq 0 ]; then
       log "OK: stack actualizado"
-      printf '%s\n' "$remote_head" > "$STATE_FILE"
-      log "estado escrito en $STATE_FILE: $(cat "$STATE_FILE" 2>/dev/null || echo '<lectura falló>') (remote_head=$remote_head)"
+      git update-ref "$DEPLOYED_REF" "$remote_head"
+      log "estado=$DEPLOYED_REF -> $(git rev-parse --verify -q "$DEPLOYED_REF") (remote_head=$remote_head)"
       notify_discord "✅ **Despliegue exitoso** — SynapseCME actualizado (\`$(git rev-parse --short HEAD)\`)."
     else
       # No se actualiza el estado: el próximo ciclo reintenta el mismo commit.
