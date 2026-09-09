@@ -158,13 +158,8 @@ async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
     used_fallback = False
     ext: ExtractionResult | None = None
 
-    cold_start = False
+    cold_start = False  # kept for build_metrics signature stability; QVAC preloads models
     client = _client
-    if client is not None:
-        try:
-            cold_start = not await client.is_model_loaded()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("No se pudo consultar /api/ps: %s", exc)
 
     # 1) Try the LLM pipeline ----------------------------------------------
     if client is not None:

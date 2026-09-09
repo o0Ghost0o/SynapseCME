@@ -5,8 +5,8 @@
 
 services:
   qvac:
-    # With the NVIDIA device reserved below, Ollama auto-detects and uses the
-    # GPU (full layer offload by default). No extra env vars needed.
+    # With the NVIDIA device reserved below, the QVAC server auto-detects and
+    # uses the GPU (full layer offload by default). No extra env vars needed.
     deploy:
       resources:
         reservations:

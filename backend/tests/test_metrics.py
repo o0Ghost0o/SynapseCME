@@ -29,13 +29,8 @@ class TestThroughput:
 
 
 class TestBuildMetrics:
-    def test_with_ollama_usage(self):
-        usage = {
-            "prompt_eval_count": 120,
-            "eval_count": 60,
-            "eval_duration": 2_000_000_000,  # 2 s
-            "load_duration": 3_500_000_000,  # 3.5 s cold load
-        }
+    def test_with_openai_usage(self):
+        usage = {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180}
         m = build_metrics(
             model="medpsy:q4_k_m",
             ttft_ms=4000,
@@ -43,17 +38,16 @@ class TestBuildMetrics:
             prompt_text="x" * 480,
             generated_text="y" * 240,
             usage=usage,
-            cold_start=True,
         )
         assert m.prompt_tokens == 120
         assert m.generation_tokens == 60
-        assert m.throughput_tps == 30.0  # 60 tokens / 2 s
-        assert m.model_load_ms == 3500
+        assert m.throughput_tps == 30.0  # 60 tokens / 2 s wall clock
+        assert m.model_load_ms is None  # no cold-start signal in OpenAI usage
         assert m.ttft_ms == 4000
         assert m.total_ms == 6000
 
-    def test_warm_start_has_no_load_time(self):
-        usage = {"prompt_eval_count": 10, "eval_count": 20, "eval_duration": 1_000_000_000}
+    def test_no_load_time_without_cold_start(self):
+        usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
         m = build_metrics(
             model="m", ttft_ms=300, total_ms=1300,
             prompt_text="p", generated_text="g", usage=usage, cold_start=False,
@@ -64,12 +58,12 @@ class TestBuildMetrics:
         m = build_metrics(
             model="m", ttft_ms=500, total_ms=2500,
             prompt_text="x" * 400, generated_text="y" * 800,
-            usage=None, cold_start=True,
+            usage=None,
         )
         assert m.prompt_tokens == 100
         assert m.generation_tokens == 200
-        assert m.throughput_tps == 100.0  # 200 tokens / 2 s
-        assert m.model_load_ms == 500  # falls back to TTFT on cold start
+        assert m.throughput_tps == 100.0  # 200 tokens / 2 s wall clock
+        assert m.model_load_ms is None  # QVAC preloads models; always warm
 
     def test_perf_row_shape(self):
         m = build_metrics(

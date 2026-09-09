@@ -38,14 +38,45 @@ services:
       timeout: 5s
       retries: 12
 
-  # Local inference node (QVAC / Ollama runtime).
+  # Local inference node: real QVAC (Tether) OpenAI-compatible server
+  # (@qvac/cli, `qvac serve openai`). Models are declared in a generated
+  # qvac.config.json; GGUF drop zone is ./models (ro).
   # Runs CPU-only by default, so the stack works on any machine.
   # On the NVIDIA node (RTX 3060 Ti), apply the GPU override:
   #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
   # VRAM budget on GPU: MedPsy Q4_K_M (~4.5 GB) + bge-m3 (~1.2 GB) <= 6 GB.
   qvac:
-    image: ollama/ollama:latest
+    image: node:22-bookworm-slim
     container_name: synapse-qvac
+    entrypoint: ["/qvac-server-entrypoint.sh"]
+    environment:
+      MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      # Phase 2: Pear/HTTP URL for P2P model fetch. Empty = registry/local only.
+      QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-}
+      QVAC_PORT: "11434"
+      QVAC_HOST: 0.0.0.0
+    volumes:
+      - qvac_models:/usr/local/lib/node_modules
+      - qvac_npm_cache:/root/.npm
+      - ./scripts/qvac-server-entrypoint.sh:/qvac-server-entrypoint.sh:ro
+      - ./models:/models:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:11434/v1/models').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Legacy Ollama node — opt-in fallback only (profile "ollama", off by
+  # default). QVAC is the single inference core.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: synapse-ollama
+    profiles: ["ollama"]
     entrypoint: ["/qvac-entrypoint.sh"]
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
@@ -58,11 +89,6 @@ services:
       - ${VOLUMES_ROOT:-./volumes}/qvac:/root/.ollama
       - ./scripts/qvac-entrypoint.sh:/qvac-entrypoint.sh:ro
       - ./models:/models:ro
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
 
   backend:
     build: ./backend
@@ -117,3 +143,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+volumes:
+  qvac_models:
+  qvac_npm_cache:

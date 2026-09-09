@@ -8,8 +8,9 @@ from app.agent.service import handle_chat, parse_llm_json
 from app.models import ChatRequest
 
 
-def _ndjson(*objects):
-    return "\n".join(json.dumps(o) for o in objects)
+def _sse_body(*chunks: dict) -> bytes:
+    body = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks)
+    return (body + "data: [DONE]\n\n").encode()
 
 
 def make_client(handler) -> QvacClient:
@@ -24,11 +25,11 @@ def run(coro):
 class TestQvacClient:
     def test_list_models(self):
         def handler(request):
-            assert request.url.path == "/api/tags"
-            return httpx.Response(200, json={"models": [{"name": "medpsy:q4_k_m"}, {"name": "bge-small"}]})
+            assert request.url.path == "/v1/models"
+            return httpx.Response(200, json={"data": [{"id": "medpsy:q4_k_m"}, {"id": "bge-m3"}]})
 
         client = make_client(handler)
-        assert run(client.list_models()) == ["medpsy:q4_k_m", "bge-small"]
+        assert run(client.list_models()) == ["medpsy:q4_k_m", "bge-m3"]
         run(client.aclose())
 
     def test_list_models_down(self):
@@ -39,22 +40,23 @@ class TestQvacClient:
 
     def test_stream_chat(self):
         chunks = [
-            {"message": {"role": "assistant", "content": "ho"}, "done": False},
-            {"message": {"role": "assistant", "content": "la"}, "done": False},
+            {"choices": [{"delta": {"role": "assistant", "content": "ho"}}]},
+            {"choices": [{"delta": {"content": "la"}}]},
             {
-                "message": {"role": "assistant", "content": ""},
-                "done": True,
-                "prompt_eval_count": 10,
-                "eval_count": 2,
-                "eval_duration": 1_000_000_000,
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
             },
         ]
 
         def handler(request):
-            assert request.url.path == "/api/chat"
+            assert request.url.path == "/v1/chat/completions"
             body = json.loads(request.content)
             assert body["stream"] is True
-            return httpx.Response(200, content=_ndjson(*chunks))
+            return httpx.Response(
+                200,
+                content=_sse_body(*chunks),
+                headers={"content-type": "text/event-stream"},
+            )
 
         async def collect():
             client = make_client(handler)
@@ -66,7 +68,8 @@ class TestQvacClient:
         tokens = [e["token"] for e in events if "token" in e]
         done = next(e for e in events if e.get("done"))
         assert tokens == ["ho", "la"]
-        assert done["usage"]["eval_count"] == 2
+        assert done["text"] == "hola"
+        assert done["usage"]["completion_tokens"] == 2
 
 
 class TestParseLlmJson:
