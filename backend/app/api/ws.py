@@ -1,4 +1,9 @@
-"""WS /ws/events — presence registry, heartbeat, live mutation feed."""
+"""WS /ws/events — authenticated presence, heartbeat, live mutation feed.
+
+The hello message must carry a valid access token:
+    {"type":"hello","token":"<access_token>","client_type":"...","name":"..."}
+Unauthenticated connections receive a Spanish error event and are closed.
+"""
 
 from __future__ import annotations
 
@@ -10,10 +15,13 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.auth import service as auth_service
 from app.core.events import bus, presence
 
 logger = logging.getLogger("synapse.api.ws")
 router = APIRouter()
+
+WS_AUTH_ERROR_CODE = 4401
 
 
 @router.websocket("/ws/events")
@@ -26,23 +34,44 @@ async def events_ws(ws: WebSocket) -> None:
     async def send(message: dict) -> None:
         await ws.send_text(json.dumps(message, ensure_ascii=False))
 
+    async def reject(message: str) -> None:
+        await send({"type": "error", "message": message})
+        await ws.close(code=WS_AUTH_ERROR_CODE)
+
     async def broadcast_presence() -> None:
         await bus.broadcast({"type": "presence", "clients": presence.snapshot()})
 
     try:
-        # First message must be hello (with a small grace window).
+        # First message must be hello with a valid token (small grace window).
         try:
             hello_raw = await asyncio.wait_for(ws.receive_text(), timeout=15.0)
             hello = json.loads(hello_raw)
         except (asyncio.TimeoutError, json.JSONDecodeError):
             hello = {}
 
-        if isinstance(hello, dict) and hello.get("type") == "hello":
-            client_type = str(hello.get("client_type") or "dashboard")
-            name = str(hello.get("name") or f"cliente-{key}")
-            presence.register(key, client_type, name)
-            registered = True
-            await broadcast_presence()
+        if not isinstance(hello, dict) or hello.get("type") != "hello":
+            await reject("Mensaje inicial 'hello' requerido")
+            return
+        token = hello.get("token")
+        if not token:
+            await reject("Token de acceso requerido en el hello")
+            return
+        try:
+            user = await auth_service.authenticate_access_token(str(token))
+        except Exception as exc:  # noqa: BLE001 - HTTPException with Spanish detail
+            await reject(getattr(exc, "detail", "Token inválido"))
+            return
+
+        client_type = str(hello.get("client_type") or "dashboard")
+        # Presence identity is the authenticated user, never the client name.
+        presence.register(
+            key, client_type, user["full_name"], username=user["username"]
+        )
+        registered = True
+        logger.info(
+            "WS autenticado: %s (%s) como %s", user["username"], client_type, key
+        )
+        await broadcast_presence()
 
         async def pump_inbound() -> None:
             while True:

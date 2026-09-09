@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -92,3 +92,48 @@ class HierarchyResponse(BaseModel):
 class NetworkResponse(BaseModel):
     nodes: list[dict[str, Any]]
     links: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Auth schemas
+# ---------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=128)
+    role: Literal["admin", "capturer", "viewer"]
+
+
+class UserOut(BaseModel):
+    username: str
+    full_name: str
+    role: Literal["admin", "capturer", "viewer"]
+    disabled: bool | None = None
+    created_at: str | None = None
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserOut
+
+
+class UsersResponse(BaseModel):
+    entries: list[UserOut]

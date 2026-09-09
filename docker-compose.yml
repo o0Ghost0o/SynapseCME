@@ -90,6 +90,33 @@ services:
       - ./scripts/qvac-entrypoint.sh:/qvac-entrypoint.sh:ro
       - ./models:/models:ro
 
+  # Speech-to-text (speaches / faster-whisper, OpenAI-compatible API).
+  # CPU variant on purpose: the RTX 3060 Ti's 8 GB VRAM stay reserved for
+  # MedPsy. A CUDA variant (ghcr.io/speaches-ai/speaches:latest-cuda) exists
+  # if GPU headroom is ever wanted — see docker-compose.gpu.yml.
+  # Internal only (gateway pattern): no published ports.
+  # Env conventions verified against the pinned image's config (pydantic
+  # settings): WHISPER__MODEL -> whisper.model, UVICORN__PORT -> port (8000),
+  # DEFAULT_LANGUAGE -> default transcription language.
+  # First use downloads the model (~460 MB) into the persistent HF cache.
+  stt:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: synapse-stt
+    environment:
+      WHISPER__MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      UVICORN__PORT: "8000"
+      DEFAULT_LANGUAGE: es
+      ENABLE_UI: "false"
+    volumes:
+      - ${VOLUMES_ROOT:-./volumes}/stt:/home/ubuntu/.cache/huggingface
+    healthcheck:
+      # FastAPI app: prefer /health, fall back to /docs.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health >/dev/null 2>&1 || wget -qO- http://localhost:8000/docs >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 60s
+
   backend:
     build: ./backend
     container_name: synapse-backend
@@ -99,8 +126,12 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-synapse-local-dev}
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse-local-dev}@postgres:5432/${POSTGRES_DB:-synapse_state}
       QVAC_BASE_URL: http://qvac:11434
+      STT_BASE_URL: http://stt:8000
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
       EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
+      JWT_SECRET: ${JWT_SECRET:-synapse-dev-jwt-secret-cambiame}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-synapse-admin}
       # Phase 3 — node-to-node observation sync. Empty SYNC_PEERS = sync off;
       # empty SYNC_TOKEN = /api/sync/ingest answers 404 (endpoint closed).
       SYNC_PEERS: ${SYNC_PEERS:-}
@@ -112,6 +143,8 @@ services:
       postgres:
         condition: service_healthy
       qvac:
+        condition: service_healthy
+      stt:
         condition: service_healthy
     volumes:
       - rag_data:/data/rag

@@ -14,7 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import db
 from app.agent import service as agent_service
 from app.agent.qvac import QvacClient
-from app.api import chat, facilities, metrics, transactions, ws
+from app.api import auth, chat, facilities, metrics, stt, transactions, ws
+from app.auth import service as auth_service
 from app.core.config import settings
 from app.graph import engine
 from app.models import HealthResponse
@@ -31,7 +32,16 @@ logger = logging.getLogger("synapse.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    if settings.jwt_secret == auth_service.DEFAULT_JWT_SECRET:
+        logger.warning(
+            "JWT_SECRET no configurado: usando el secreto de DESARROLLO. "
+            "Cámbialo en producción (variable de entorno JWT_SECRET)."
+        )
     db_ok = await db.init_pool(settings.postgres_dsn)
+    if db_ok:
+        # The DB data dir may predate init.sql: create auth tables ourselves.
+        await db.ensure_schema()
+        await auth_service.ensure_bootstrap_admin()
     graph_ok = engine.init_driver(settings)
     agent_service.init_client(settings)
 
@@ -84,7 +94,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(auth.router)
     app.include_router(chat.router)
+    app.include_router(stt.router)
     app.include_router(facilities.router)
     app.include_router(metrics.router)
     app.include_router(sync_router.router)

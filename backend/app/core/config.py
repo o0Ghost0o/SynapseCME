@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     rag_dir: str = "/data/rag"
     rag_top_k: int = 3
 
+    stt_base_url: str = "http://stt:8000"
+    stt_model: str = "Systran/faster-whisper-small"
+
     cors_origins: str = "*"
 
     # Phase 3 — node-to-node observation sync. Empty sync_token = endpoint
@@ -26,6 +29,14 @@ class Settings(BaseSettings):
     sync_peers: str = ""
     sync_token: str = ""
     sync_interval_s: int = 30
+
+    # Auth. Defaults are development-only; the app logs loud warnings when
+    # they are used.
+    jwt_secret: str = "synapse-dev-jwt-secret-cambiame-2026"
+    admin_user: str = "admin"
+    admin_password: str = "synapse-admin"
+    access_token_ttl_seconds: int = 900  # 15 minutes
+    refresh_token_ttl_days: int = 7
 
 
 settings = Settings()

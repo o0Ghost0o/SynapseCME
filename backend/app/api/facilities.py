@@ -1,11 +1,13 @@
-"""Facility, hierarchy and network-dump endpoints."""
+"""Facility, hierarchy and network-dump endpoints (viewer role and above)."""
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth.deps import require_viewer
 from app.graph import engine
 from app.models import FacilityDetail, HierarchyResponse, NetworkResponse
 
@@ -14,7 +16,9 @@ router = APIRouter(tags=["facilities"])
 
 
 @router.get("/api/facility/{facility_id}", response_model=FacilityDetail)
-async def get_facility(facility_id: str) -> FacilityDetail:
+async def get_facility(
+    facility_id: str, user: dict[str, Any] = Depends(require_viewer)
+) -> FacilityDetail:
     if engine.driver() is None:
         raise HTTPException(status_code=503, detail="Grafo no disponible")
     try:
@@ -28,7 +32,7 @@ async def get_facility(facility_id: str) -> FacilityDetail:
 
 
 @router.get("/api/hierarchy", response_model=HierarchyResponse)
-async def get_hierarchy() -> HierarchyResponse:
+async def get_hierarchy(user: dict[str, Any] = Depends(require_viewer)) -> HierarchyResponse:
     try:
         return HierarchyResponse(**await engine.get_hierarchy())
     except Exception as exc:  # noqa: BLE001
@@ -37,7 +41,7 @@ async def get_hierarchy() -> HierarchyResponse:
 
 
 @router.get("/api/network", response_model=NetworkResponse)
-async def get_network() -> NetworkResponse:
+async def get_network(user: dict[str, Any] = Depends(require_viewer)) -> NetworkResponse:
     try:
         return NetworkResponse(**await engine.get_network())
     except Exception as exc:  # noqa: BLE001

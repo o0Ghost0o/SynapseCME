@@ -29,10 +29,20 @@ for _p in (str(_BACKEND), str(_REPO_ROOT)):
 
 from app import db  # noqa: E402
 from app.agent import extractor as rule_extractor  # noqa: E402
+from app.auth import service as auth_service  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.graph import engine  # noqa: E402
 
 logger = logging.getLogger("synapse.seed")
+
+CONTRIBUTOR_PASSWORD = "synapse-dev"  # documented dev password for seed users
+
+
+def contributor_username(full_name: str) -> str:
+    """Deterministic username: 'Marina Solís' -> 'marina.solis'."""
+    parts = full_name.lower().replace("í", "i").replace("é", "e").replace("á", "a") \
+        .replace("ó", "o").replace("ú", "u").split()
+    return ".".join(parts)
 
 CONTRIBUTORS = ["Marina Solís", "Jorge Iriarte", "Camila Duarte"]
 CLIENT_TYPE = "field_app"
@@ -344,6 +354,17 @@ async def seed(wipe: bool = False) -> dict[str, int]:
         raise SystemExit(f"Dataset inválido:\n  - " + "\n  - ".join(errors))
 
     await db.init_pool(settings.postgres_dsn)
+    await db.ensure_schema()
+    await auth_service.ensure_bootstrap_admin()
+    # Seed contributors must be real user identities so observations are
+    # attributed to actual accounts (capturer role, documented dev password).
+    for name in CONTRIBUTORS:
+        await auth_service.ensure_user(
+            username=contributor_username(name),
+            full_name=name,
+            role="capturer",
+            password=CONTRIBUTOR_PASSWORD,
+        )
     engine.init_driver(settings)
     await engine.bootstrap_schema()
     if wipe:
@@ -365,6 +386,12 @@ async def seed(wipe: bool = False) -> dict[str, int]:
     print(
         "\nSeed completado: %(observations)d observaciones, %(facilities)d facilidades, "
         "%(equipment)d equipos tocados, %(transactions)d transacciones" % stats
+    )
+    print(
+        "Usuarios capturer: "
+        + ", ".join(
+            f"{contributor_username(n)} / {CONTRIBUTOR_PASSWORD}" for n in CONTRIBUTORS
+        )
     )
     return stats
 
