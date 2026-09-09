@@ -141,6 +141,7 @@ while true; do
     if [ "$compose_rc" -eq 0 ]; then
       log "OK: stack actualizado"
       printf '%s\n' "$remote_head" > "$STATE_FILE"
+      log "estado escrito en $STATE_FILE: $(cat "$STATE_FILE" 2>/dev/null || echo '<lectura falló>') (remote_head=$remote_head)"
       notify_discord "✅ **Despliegue exitoso** — SynapseCME actualizado (\`$(git rev-parse --short HEAD)\`)."
     else
       # No se actualiza el estado: el próximo ciclo reintenta el mismo commit.
