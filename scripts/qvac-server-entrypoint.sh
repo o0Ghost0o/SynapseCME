@@ -36,22 +36,36 @@ fi
 qvac --version 2>/dev/null || echo "QVAC: qvac binary present"
 
 # 2) Config -------------------------------------------------------------------
-medpsy_base="${MEDPSY_MODEL%%:*}"
-medpsy_ref="$MEDPSY_MODEL"
+# Model reference resolution (Phase 2 — P2P model distribution baseline):
+#   1. Local GGUF:  /models/<base>.gguf (bind-mounted drop zone) wins.
+#   2. P2P/HTTP:    QVAC_MODEL_SOURCE (any Pear or HTTP URL, e.g. a HuggingFace
+#                   resolve URL or a peer's model address) — QVAC fetches the
+#                   model from the source on first start and caches it in its
+#                   model store, so later boots use the local copy.
+#   3. Registry:    the bare model name (must exist on the model registry).
+# NOTE: the config "model" field accepting a URL/path could not be verified
+# offline for every CLI version; adjust resolve_ref below if yours differs.
+resolve_ref() {
+    model="$1"
+    base="${model%%:*}"
+    if [ -f "/models/${base}.gguf" ]; then
+        echo "QVAC: $model -> local /models/${base}.gguf" >&2
+        printf '/models/%s.gguf' "$base"
+    elif [ -n "$QVAC_MODEL_SOURCE" ] && printf '%s' "$QVAC_MODEL_SOURCE" | grep -q "$base"; then
+        echo "QVAC: $model -> $QVAC_MODEL_SOURCE (P2P/HTTP fetch on first start)" >&2
+        printf '%s' "$QVAC_MODEL_SOURCE"
+    else
+        if [ -n "$QVAC_MODEL_SOURCE" ]; then
+            echo "QVAC: WARNING QVAC_MODEL_SOURCE does not mention '$base'; using registry name" >&2
+        fi
+        echo "QVAC: $model -> registry name (must exist on the registry)" >&2
+        printf '%s' "$model"
+    fi
+}
 
-# Prefer a local GGUF dropped into ./models (mounted at /models, ro) when the
-# file matches the model name. The config's "model" field is set to the file
-# path; if your QVAC version wants a different key (e.g. a "path"/"source"
-# field) for local GGUFs, adjust here.
-if [ -f "/models/${medpsy_base}.gguf" ]; then
-    echo "QVAC: found local /models/${medpsy_base}.gguf — wiring it into the config"
-    medpsy_ref="/models/${medpsy_base}.gguf"
-fi
-# shellcheck disable=SC2034
-embed_ref="$EMBED_MODEL"
-if [ -n "$QVAC_MODEL_SOURCE" ]; then
-    echo "QVAC: QVAC_MODEL_SOURCE set ($QVAC_MODEL_SOURCE) — Phase 2 will use it for P2P fetch"
-fi
+medpsy_base="${MEDPSY_MODEL%%:*}"
+medpsy_ref="$(resolve_ref "$MEDPSY_MODEL")"
+embed_ref="$(resolve_ref "$EMBED_MODEL")"
 
 mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_PATH" <<EOF
@@ -66,7 +80,7 @@ cat > "$CONFIG_PATH" <<EOF
         }
       },
       "${EMBED_MODEL}": {
-        "model": "${EMBED_MODEL}",
+        "model": "${embed_ref}",
         "config": {
           "ctx_size": 8192
         }
