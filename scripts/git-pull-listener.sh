@@ -10,8 +10,32 @@
 # Discord: set DISCORD_DEPLOY_WEBHOOK in the repo-root .env (gitignored).
 set -uo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INTERVAL="${1:-60}"
+REPO_DIR="${2:-}"
+if [ -z "$REPO_DIR" ]; then
+  REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+# Copia estable de ejecución: el deploy hace `git merge --ff-only`, que puede
+# REESCRIBIR este mismo archivo mientras bash lo está ejecutando. Bash lee los
+# scripts de forma incremental por OFFSET de bytes, así que el contenido nuevo
+# desalinea la ejecución y silenció el resto del ciclo. Por eso SIEMPRE se
+# corre desde una copia privada; tras un deploy que tocó el script, se re-exec.
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+RUNNING_COPY="$STATE_DIR/synapsecme-pull-listener.run"
+if [ "${BASH_SOURCE[0]}" != "$RUNNING_COPY" ]; then
+  mkdir -p "$STATE_DIR"
+  cp "${BASH_SOURCE[0]}" "$RUNNING_COPY"
+  exec bash "$RUNNING_COPY" "$INTERVAL" "$REPO_DIR"
+fi
+
+maybe_reexec() {
+  if ! cmp -s "$REPO_DIR/scripts/git-pull-listener.sh" "$RUNNING_COPY" 2>/dev/null; then
+    log "El script cambió con el deploy; re-ejecutando la nueva versión..."
+    cp "$REPO_DIR/scripts/git-pull-listener.sh" "$RUNNING_COPY"
+    exec bash "$RUNNING_COPY" "$INTERVAL" "$REPO_DIR"
+  fi
+}
 
 cd "$REPO_DIR"
 
@@ -124,6 +148,10 @@ while true; do
       tail_lines="$(printf '%s\n' "$compose_out" | tail -n 15 | sed 's/`/ʼ/g')"
       notify_discord "$(printf '❌ **Despliegue falló** (rc=%s):\n```\n%s\n```' "$compose_rc" "$tail_lines")"
     fi
+
+    # Si el deploy trajo una versión nueva de este script, seguir ejecutando
+    # la copia antigua desalinearía bash; se adopta la nueva versión.
+    maybe_reexec
   fi
 
   sleep "$INTERVAL"
