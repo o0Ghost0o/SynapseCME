@@ -47,6 +47,27 @@ def test_city_pattern():
     assert ext.country == "Panamá"
 
 
+def test_city_from_facility_name():
+    msg = (
+        "En el Hospital General de Valencia hay 2 resonancias "
+        "Siemens MAGNETOM Vida de 9 años, modalidad confirmada"
+    )
+    ext = extract(msg)
+    assert ext.facility == "Hospital General de Valencia"
+    assert ext.city == "Valencia"
+    assert ext.country == "España"
+    mr = next(i for i in ext.items if i.modality == "MR")
+    assert mr.quantity == 2
+    assert mr.age_years == 9
+    assert mr.manufacturer == "Siemens"
+
+
+def test_city_from_gazetteer():
+    ext = extract("Hice mantenimiento en Bogotá, vi un tomógrafo Philips")
+    assert ext.city == "Bogotá"
+    assert ext.country == "Colombia"
+
+
 def test_manufacturer_detected():
     ext = extract("El Hospital Norte tiene una resonancia Siemens de 5 años")
     assert ext.items[0].manufacturer == "Siemens"

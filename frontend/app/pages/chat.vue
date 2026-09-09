@@ -105,6 +105,36 @@ function normKey(k: string): string {
   return k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+// El backend envía el ExtractionResult anidado de Pydantic
+// ({facility, city, country, items: [{modality, quantity, ...}]}), mientras
+// que el LLM puede devolver un dict plano con claves en español. Se normaliza
+// a un dict plano con las claves primarias de FIELD_DEFS.
+function normalizeExtraction(raw: Record<string, unknown>): Record<string, unknown> {
+  const flat: Record<string, unknown> = { ...raw }
+  if (raw.facility !== undefined && flat.instalacion === undefined) flat.instalacion = raw.facility
+  if (raw.city !== undefined && flat.ciudad === undefined) flat.ciudad = raw.city
+  if (raw.country !== undefined && flat.pais === undefined) flat.pais = raw.country
+  if (raw.confidence !== undefined && flat.confianza === undefined) flat.confianza = raw.confidence
+  const items = (Array.isArray(raw.items) ? raw.items : []).filter(
+    (i): i is Record<string, unknown> => !!i && typeof i === 'object',
+  )
+  if (items.length) {
+    const first = items[0]
+    if (flat.modalidad === undefined) {
+      const mods = [...new Set(items.map((i) => i.modality).filter(Boolean))]
+      flat.modalidad = mods.join(', ')
+    }
+    if (flat.cantidad === undefined) {
+      const total = items.reduce((n, i) => n + (typeof i.quantity === 'number' ? i.quantity : 0), 0)
+      if (total > 0) flat.cantidad = total
+    }
+    if (flat.fabricante === undefined) flat.fabricante = first.manufacturer
+    if (flat.modelo === undefined) flat.modelo = first.model
+    if (flat.antiguedad === undefined) flat.antiguedad = first.age_years
+  }
+  return flat
+}
+
 function fieldValue(extraction: Record<string, unknown>, def: (typeof FIELD_DEFS)[number]): unknown {
   const entries = Object.entries(extraction)
   for (const alias of def.aliases) {
@@ -123,6 +153,9 @@ function displayValue(key: string, value: unknown): string {
   if (key === 'confianza' && typeof value === 'number') {
     const pct = value <= 1 ? value * 100 : value
     return `${pct.toFixed(0)} %`
+  }
+  if (key === 'antiguedad' && typeof value === 'number') {
+    return `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} años`
   }
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
@@ -145,7 +178,7 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
       scrollDown()
       break
     case 'extraction':
-      msg.extraction = (event.data ?? event.extraction ?? {}) as Record<string, unknown>
+      msg.extraction = normalizeExtraction((event.data ?? event.extraction ?? {}) as Record<string, unknown>)
       break
     case 'followup':
       msg.followup = typeof event.question === 'string' ? event.question : String(event.question ?? '')

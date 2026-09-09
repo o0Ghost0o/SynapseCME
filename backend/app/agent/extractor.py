@@ -37,6 +37,46 @@ COUNTRIES = [
     "Venezuela", "Honduras", "El Salvador", "Nicaragua", "Cuba", "RD",
 ]
 
+# City -> country, used to resolve cities that appear only inside a facility
+# name ("Hospital General de Valencia") or without an explicit country.
+# Ambiguous names shared by several countries (p.ej. Córdoba) se omiten.
+CITY_COUNTRY: dict[str, str] = {
+    # España
+    "Madrid": "España", "Barcelona": "España", "Valencia": "España",
+    "Sevilla": "España", "Zaragoza": "España", "Málaga": "España",
+    "Bilbao": "España", "Murcia": "España", "Alicante": "España",
+    "Granada": "España", "Valladolid": "España", "Vigo": "España",
+    # Panamá
+    "Ciudad de Panamá": "Panamá", "Panamá": "Panamá", "Colón": "Panamá",
+    # Colombia
+    "Bogotá": "Colombia", "Medellín": "Colombia", "Cali": "Colombia",
+    "Barranquilla": "Colombia", "Cartagena": "Colombia",
+    # México
+    "Ciudad de México": "México", "Guadalajara": "México",
+    "Monterrey": "México", "Puebla": "México", "Mérida": "México",
+    "Cancún": "México", "Tijuana": "México",
+    # Argentina
+    "Buenos Aires": "Argentina", "Rosario": "Argentina", "Mendoza": "Argentina",
+    # Chile
+    "Santiago": "Chile", "Valparaíso": "Chile", "Concepción": "Chile",
+    # Perú
+    "Lima": "Perú", "Arequipa": "Perú",
+    # Ecuador
+    "Quito": "Ecuador", "Guayaquil": "Ecuador",
+    # Brasil
+    "São Paulo": "Brasil", "Río de Janeiro": "Brasil", "Brasilia": "Brasil",
+    # Resto de LatAm
+    "San José": "Costa Rica", "Ciudad de Guatemala": "Guatemala",
+    "Montevideo": "Uruguay", "Caracas": "Venezuela", "Maracaibo": "Venezuela",
+    "La Paz": "Bolivia", "Santo Domingo": "RD",
+    "Tegucigalpa": "Honduras", "San Pedro Sula": "Honduras",
+    "San Salvador": "El Salvador", "Managua": "Nicaragua",
+    "La Habana": "Cuba",
+    # Otros
+    "Miami": "Estados Unidos", "Nueva York": "Estados Unidos",
+    "Houston": "Estados Unidos", "Berlín": "Alemania", "Múnich": "Alemania",
+}
+
 # High-value modalities that justify a follow-up when manufacturer is unknown.
 HIGH_VALUE_MODALITIES = {"MR", "CT"}
 
@@ -124,7 +164,7 @@ def _detect_country(text: str) -> str | None:
     return None
 
 
-def _detect_city(text: str) -> str | None:
+def _detect_city(text: str, facility: str | None = None) -> str | None:
     """'en <City>, <Country>' or '<Facility> en <City>' pattern (multi-word cities)."""
     country_names = {c.lower() for c in COUNTRIES}
     word = r"[A-ZÁÉÍÓÚÑ][\wáéíóúñ]*"
@@ -138,6 +178,20 @@ def _detect_city(text: str) -> str | None:
     )
     if match and match.group(1).lower() not in country_names:
         return match.group(1)
+    # Ciudad embebida en el nombre de la instalación:
+    # "Hospital General de Valencia" -> Valencia.
+    if facility:
+        match = re.search(rf"\bde\s+({seq})$", facility)
+        if match:
+            city = match.group(1)
+            if city in CITY_COUNTRY:
+                return city
+    # Último recurso: gazetteer sobre el texto completo ("estoy en Bogotá").
+    # Puede falsarse positivo con hospitales nombrados por un santo/ciudad,
+    # pero solo se usa cuando los patrones explícitos no encontraron nada.
+    for city in sorted(CITY_COUNTRY, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(city)}\b", text, re.IGNORECASE):
+            return city
     return None
 
 
@@ -176,7 +230,9 @@ def extract(message: str) -> ExtractionResult:
     quantities = _detect_quantities(message)
     facility = _detect_facility(message)
     country = _detect_country(message)
-    city = _detect_city(message)
+    city = _detect_city(message, facility)
+    if country is None and city is not None:
+        country = CITY_COUNTRY.get(city)
     age = _detect_age(message)
     manufacturer = _detect_manufacturer(message)
 
