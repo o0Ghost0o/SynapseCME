@@ -20,6 +20,7 @@ from app.core.config import Settings, settings
 from app.core.metrics import InferenceMetrics, build_metrics
 from app.graph import engine
 from app.models import ChatRequest, EquipmentItem, ExtractionResult
+from app.sync import service as sync_service
 
 logger = logging.getLogger("synapse.agent")
 
@@ -232,6 +233,10 @@ async def handle_chat(request: ChatRequest) -> AsyncIterator[str]:
     try:
         ingest = await engine.ingest_extraction(ext, contributor, request.client_type)
         transaction_ids = ingest.transaction_ids
+        try:
+            await sync_service.enqueue_extraction(ext, contributor, request.client_type)
+        except Exception:  # noqa: BLE001 - sync must never affect the stream
+            pass
         if client is not None:
             try:
                 await rag.index_extraction(client, ext, data_dir=settings.rag_dir)

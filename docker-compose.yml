@@ -101,6 +101,11 @@ services:
       QVAC_BASE_URL: http://qvac:11434
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      # Phase 3 — node-to-node observation sync. Empty SYNC_PEERS = sync off;
+      # empty SYNC_TOKEN = /api/sync/ingest answers 404 (endpoint closed).
+      SYNC_PEERS: ${SYNC_PEERS:-}
+      SYNC_TOKEN: ${SYNC_TOKEN:-}
+      SYNC_INTERVAL_S: ${SYNC_INTERVAL_S:-30}
     depends_on:
       neo4j:
         condition: service_healthy

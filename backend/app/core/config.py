@@ -18,5 +18,11 @@ class Settings(BaseSettings):
 
     cors_origins: str = "*"
 
+    # Phase 3 — node-to-node observation sync. Empty sync_token = endpoint
+    # closed; empty sync_peers = nothing is enqueued or pushed.
+    sync_peers: str = ""
+    sync_token: str = ""
+    sync_interval_s: int = 30
+
 
 settings = Settings()

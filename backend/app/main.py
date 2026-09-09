@@ -18,6 +18,9 @@ from app.api import chat, facilities, metrics, transactions, ws
 from app.core.config import settings
 from app.graph import engine
 from app.models import HealthResponse
+from app.sync import pusher as sync_pusher
+from app.sync import router as sync_router
+from app.sync import store as sync_store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,14 +41,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if not await engine.check_connectivity():
             logger.warning("Neo4j no responde; las operaciones de grafo quedarán vacías")
 
+    if db_ok:
+        with contextlib.suppress(Exception):
+            await sync_store.ensure_schema()
+
+    stop_event = asyncio.Event()
+    pusher_task: asyncio.Task[None] | None = None
+    if settings.sync_peers:
+        pusher_task = asyncio.create_task(sync_pusher.pusher_loop(stop_event))
+
     prune_task = asyncio.create_task(ws.prune_presence_loop())
     logger.info(
-        "SynapseCME listo (postgres=%s, neo4j=%s, qvac=%s)",
+        "SynapseCME listo (postgres=%s, neo4j=%s, qvac=%s, sync_peers=%s)",
         "ok" if db_ok else "off",
         "ok" if graph_ok else "off",
         settings.qvac_base_url,
+        settings.sync_peers or "off",
     )
     yield
+    stop_event.set()
+    if pusher_task is not None:
+        pusher_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await pusher_task
     prune_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await prune_task
@@ -69,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(facilities.router)
     app.include_router(metrics.router)
+    app.include_router(sync_router.router)
     app.include_router(transactions.router)
     app.include_router(ws.router)
 
