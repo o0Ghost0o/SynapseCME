@@ -59,7 +59,7 @@ onMounted(() => {
             <button
               v-for="cat in categories"
               :key="cat.id"
-              class="glass-chip shrink-0 transition"
+              class="glass-chip shrink-0 py-1.5 transition"
               :class="activeCategory === cat.id ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-300'"
               @click="activeCategory = cat.id"
             >
