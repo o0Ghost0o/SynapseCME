@@ -105,12 +105,14 @@ const num = (v: unknown): number | null => {
 
 export function normalizeFacility(data: unknown, id: string): FacilityInfo {
   const obj = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  // El backend anida la ficha en {facility: {...}, equipment: [...]}.
+  const fac = (obj.facility && typeof obj.facility === 'object' ? obj.facility : obj) as Record<string, unknown>
   const rawEquipment = asArray(obj.equipment ?? obj.equipos ?? obj.assets ?? obj.modalities)
   return {
-    id: String(obj.id ?? id),
-    name: String(obj.name ?? obj.label ?? obj.installation ?? 'Instalación'),
-    city: String(obj.city ?? obj.ciudad ?? ''),
-    country: String(obj.country ?? obj.pais ?? ''),
+    id: String(fac.id ?? id),
+    name: String(fac.name ?? fac.label ?? fac.installation ?? 'Instalación'),
+    city: String(fac.city ?? fac.ciudad ?? ''),
+    country: String(fac.country ?? fac.pais ?? ''),
     equipment: rawEquipment.map((e, i) => {
       const eo = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>
       return {
@@ -124,6 +126,146 @@ export function normalizeFacility(data: unknown, id: string): FacilityInfo {
       }
     }),
   }
+}
+
+/* Detalle de equipo: /api/equipment/{id} devuelve {equipment, observations,
+   parameters, parameter_history} (Pydantic, snake_case). */
+export interface ObservationEntry {
+  id: string
+  contributor: string
+  text: string
+  confidence: number | null
+  createdAt: string
+}
+
+export type ParameterStatus = 'ok' | 'warning' | 'critical'
+
+export interface ParameterEntry {
+  id: string
+  name: string
+  value: string | number | null
+  unit: string
+  status: ParameterStatus | null
+  sourceObservationId: string
+  createdAt: string
+}
+
+export interface EquipmentDetailData {
+  equipment: {
+    id: string
+    modality: string
+    manufacturer: string
+    model: string
+    ageYears: number | null
+    state: string
+    facilityId: string
+    facilityName: string
+    city: string
+    country: string
+  }
+  observations: ObservationEntry[]
+  parameters: ParameterEntry[]
+  parameterHistory: ParameterEntry[]
+}
+
+export function normalizeEquipmentDetail(data: unknown): EquipmentDetailData {
+  const obj = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const eq = (obj.equipment && typeof obj.equipment === 'object' ? obj.equipment : {}) as Record<string, unknown>
+  const toParam = (p: unknown): ParameterEntry => {
+    const po = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>
+    const status = String(po.status ?? '')
+    return {
+      id: String(po.id ?? ''),
+      name: String(po.name ?? ''),
+      value: (po.value as string | number | null) ?? null,
+      unit: String(po.unit ?? ''),
+      status: status === 'ok' || status === 'warning' || status === 'critical' ? status : null,
+      sourceObservationId: String(po.source_observation_id ?? ''),
+      createdAt: String(po.created_at ?? ''),
+    }
+  }
+  const observations = asArray(obj.observations).map((o) => {
+    const oo = (o && typeof o === 'object' ? o : {}) as Record<string, unknown>
+    const confidence = Number(oo.confidence)
+    return {
+      id: String(oo.id ?? ''),
+      contributor: String(oo.contributor ?? 'Anónimo'),
+      text: String(oo.text ?? ''),
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      createdAt: String(oo.created_at ?? ''),
+    }
+  })
+  return {
+    equipment: {
+      id: String(eq.id ?? ''),
+      modality: String(eq.modality ?? 'Otro'),
+      manufacturer: String(eq.manufacturer ?? ''),
+      model: String(eq.model ?? ''),
+      ageYears: num(eq.age_years),
+      state: String(eq.state ?? 'desconocido'),
+      facilityId: String(eq.facility_id ?? ''),
+      facilityName: String(eq.facility_name ?? 'Instalación'),
+      city: String(eq.city ?? ''),
+      country: String(eq.country ?? ''),
+    },
+    observations,
+    parameters: asArray(obj.parameters).map(toParam),
+    parameterHistory: asArray(obj.parameter_history).map(toParam),
+  }
+}
+
+/* Lista plana filtrada: /api/equipments → {items, total}. */
+export interface EquipmentListItem {
+  id: string
+  modality: string
+  manufacturer: string
+  model: string
+  ageYears: number | null
+  state: string
+  facilityId: string
+  facilityName: string
+  city: string
+  country: string
+  hasIssue: boolean
+}
+
+export interface EquipmentListData {
+  items: EquipmentListItem[]
+  total: number
+}
+
+export function normalizeEquipmentList(data: unknown): EquipmentListData {
+  const obj = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const items = asArray(obj.items).map((e) => {
+    const eo = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>
+    return {
+      id: String(eo.id ?? ''),
+      modality: String(eo.modality ?? 'Otro'),
+      manufacturer: String(eo.manufacturer ?? ''),
+      model: String(eo.model ?? ''),
+      ageYears: num(eo.age_years),
+      state: String(eo.state ?? 'desconocido'),
+      facilityId: String(eo.facility_id ?? ''),
+      facilityName: String(eo.facility_name ?? ''),
+      city: String(eo.city ?? ''),
+      country: String(eo.country ?? ''),
+      hasIssue: Boolean(eo.has_issue),
+    }
+  })
+  const total = Number(obj.total)
+  return { items, total: Number.isFinite(total) ? total : items.length }
+}
+
+export function relativeDate(iso: string): string {
+  if (!iso) return 'Sin fecha'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'Sin fecha'
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000)
+  if (days <= 0) return 'Hoy'
+  if (days === 1) return 'Ayer'
+  if (days < 30) return `Hace ${days} días`
+  if (days < 365) return `Hace ${Math.floor(days / 30)} meses`
+  return `Hace ${Math.floor(days / 365)} años`
 }
 
 export interface MetricEntry {

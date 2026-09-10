@@ -24,3 +24,16 @@ export const STATE_RING_COLORS: Record<StateTone, string> = {
   rose: '#fb7185',
   slate: '#94a3b8',
 }
+
+/* Badges de parámetros técnicos (status inferido del texto de observación). */
+export const PARAMETER_STATUS_CLASSES: Record<'ok' | 'warning' | 'critical', string> = {
+  ok: 'border-emerald-300/30 bg-emerald-400/15 text-emerald-200',
+  warning: 'border-amber-300/30 bg-amber-400/15 text-amber-200',
+  critical: 'border-rose-300/30 bg-rose-400/15 text-rose-200',
+}
+
+export const PARAMETER_STATUS_LABELS: Record<'ok' | 'warning' | 'critical', string> = {
+  ok: 'nominal',
+  warning: 'atención',
+  critical: 'fuera de rango',
+}

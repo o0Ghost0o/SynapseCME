@@ -7,10 +7,10 @@ test.describe('vistas principales', () => {
     await expect(page.getByRole('heading', { name: /panel 360/i })).toBeVisible()
   })
 
-  test('chat carga en modo app de campo', async ({ page }) => {
+  test('chat carga listo para preguntar o dictar', async ({ page }) => {
     await page.goto('/chat')
     await expect(page.getByRole('heading', { name: /captura agent-first/i })).toBeVisible()
-    await expect(page.getByText(/modo: app de campo/i)).toBeVisible()
+    await expect(page.getByText(/preguntá o dictá una observación/i)).toBeVisible()
   })
 
   test('métricas del modelo carga', async ({ page }) => {

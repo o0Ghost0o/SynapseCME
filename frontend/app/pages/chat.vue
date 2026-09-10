@@ -374,7 +374,7 @@ const confirmed = reactive<Record<number, boolean>>({})
           ✍️ Capturando como {{ user.full_name || user.username }}
         </span>
         <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200">
-          <span>📱</span> Modo: App de campo
+          <span>💬</span> Preguntá o dictá una observación
         </span>
       </div>
     </div>
