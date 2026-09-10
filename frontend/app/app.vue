@@ -11,6 +11,7 @@ const navLinks = computed(() => {
     { to: '/dashboard', label: 'Panel 360' },
     { to: '/network', label: 'Red en vivo' },
     { to: '/metricas', label: 'Métricas' },
+    { to: '/documentacion', label: 'Documentación' },
   )
   if (isAdmin.value) links.push({ to: '/admin/usuarios', label: 'Usuarios' })
   return links
