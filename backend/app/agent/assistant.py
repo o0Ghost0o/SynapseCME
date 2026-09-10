@@ -176,7 +176,38 @@ def _as_filter(value: Any) -> str | None:
     return text
 
 
-async def _tool_list_equipment(args: dict[str, Any]) -> str:
+def _equipment_ref(item: dict[str, Any]) -> dict[str, Any]:
+    """Referencia estructurada de un equipo para cards/enlaces del frontend."""
+    return {
+        "id": item.get("id"),
+        "modality": item.get("modality"),
+        "manufacturer": item.get("manufacturer"),
+        "model": item.get("model"),
+        "state": item.get("state"),
+        "facility_name": item.get("facility_name"),
+        "country": item.get("country"),
+        "age_years": item.get("age_years"),
+        "has_issue": bool(item.get("has_issue")),
+        "issues": [str(x) for x in (item.get("issue_params") or [])[:4]],
+    }
+
+
+def _merge_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Dedup preservando orden (por si el loop lista varias veces)."""
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for ref in refs:
+        key = str(ref.get("id") or json.dumps(ref, sort_keys=True, default=str))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(ref)
+    return merged
+
+
+async def _tool_list_equipment(
+    args: dict[str, Any], refs: list[dict[str, Any]] | None = None
+) -> str:
     result = await engine.list_equipments(
         modality=_as_filter(args.get("modality")),
         manufacturer=_as_filter(args.get("manufacturer")),
@@ -190,6 +221,8 @@ async def _tool_list_equipment(args: dict[str, Any]) -> str:
     items = result.get("items") or []
     if not total:
         return "No equipment units matched the filters."
+    if refs is not None:
+        refs.extend(_equipment_ref(it) for it in items)
     lines = [f"{total} equipment unit(s) matched. First {len(items)}:"]
     for it in items:
         label = " ".join(
@@ -217,7 +250,9 @@ async def _tool_list_equipment(args: dict[str, Any]) -> str:
     return _truncate("\n".join(lines))
 
 
-async def _tool_get_equipment_detail(args: dict[str, Any]) -> str:
+async def _tool_get_equipment_detail(
+    args: dict[str, Any], refs: list[dict[str, Any]] | None = None
+) -> str:
     raw_id = args.get("id")
     # MedPsy sometimes passes a list of ids; the contract is a single id.
     if isinstance(raw_id, list) and raw_id:
@@ -229,6 +264,15 @@ async def _tool_get_equipment_detail(args: dict[str, Any]) -> str:
     if detail is None:
         return f"No equipment found with id '{eid}'."
     eq = detail["equipment"]
+    if refs is not None:
+        ref = _equipment_ref(eq)
+        ref["issues"] = [
+            f"{p['name']}: {p.get('value') or '—'} {p.get('unit') or ''} ({p.get('status')})"
+            for p in (detail.get("parameters") or [])
+            if p.get("status") in ("warning", "critical")
+        ][:4]
+        ref["has_issue"] = bool(ref["issues"])
+        refs.append(ref)
     lines = [
         " ".join(str(eq[k]) for k in ("modality", "manufacturer", "model") if eq.get(k))
         or "unknown equipment"
@@ -326,10 +370,11 @@ _TOOL_NAMES = (
 
 
 async def _exec_tool(name: str, args: dict[str, Any], ctx: Any) -> str:
+    refs = getattr(ctx, "equipment_refs", None)
     if name == "list_equipment":
-        return await _tool_list_equipment(args)
+        return await _tool_list_equipment(args, refs)
     if name == "get_equipment_detail":
-        return await _tool_get_equipment_detail(args)
+        return await _tool_get_equipment_detail(args, refs)
     if name == "search_observations":
         return await _tool_search_observations(args, ctx)
     if name == "get_facility_info":
@@ -425,7 +470,8 @@ async def _try_list_fast_path(
             "modality": modality,
             "has_issue": has_issue,
             "facility": facility,
-        }
+        },
+        refs=ctx.equipment_refs,
     )
     events: list[dict[str, Any]] = [{"type": "tool", "name": "list_equipment"}]
     answer = ""
@@ -450,7 +496,10 @@ async def _try_list_fast_path(
     if not answer or not answer.strip():
         answer = tool_text  # fallback: datos crudos mejor que nada
     answer = answer.strip()
-    events.append({"type": "answer", "text": answer})
+    answer_event: dict[str, Any] = {"type": "answer", "text": answer}
+    if ctx.equipment_refs:
+        answer_event["equipment"] = _merge_refs(ctx.equipment_refs)
+    events.append(answer_event)
     return AssistantResult(events=events, answer=answer, generated="")
 
 
@@ -477,6 +526,7 @@ async def answer_question(
         client_type=client_type,
         full_name=full_name,
         data_dir=data_dir,
+        equipment_refs=[],
     )
     # MIXED messages report new field data (ingestion is primary there), so
     # only plain questions take the deterministic fast path.
@@ -520,7 +570,10 @@ async def answer_question(
             answer = data.get("answer_es")
             if isinstance(answer, str) and answer.strip():
                 result.answer = answer.strip()
-            events.append({"type": "answer", "text": result.answer})
+            answer_event: dict[str, Any] = {"type": "answer", "text": result.answer}
+            if ctx.equipment_refs:
+                answer_event["equipment"] = _merge_refs(ctx.equipment_refs)
+            events.append(answer_event)
             result.events = events
             result.generated = "\n".join(replies)
             return result
@@ -557,6 +610,9 @@ async def answer_question(
         messages.append({"role": "assistant", "content": reply})
         messages.append({"role": "user", "content": _INVALID_JSON_NUDGE})
 
-    result.events = [*events, {"type": "answer", "text": result.answer}]
+    fallback_event: dict[str, Any] = {"type": "answer", "text": result.answer}
+    if ctx.equipment_refs:
+        fallback_event["equipment"] = _merge_refs(ctx.equipment_refs)
+    result.events = [*events, fallback_event]
     result.generated = "\n".join(replies)
     return result

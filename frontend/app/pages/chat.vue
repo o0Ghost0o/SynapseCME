@@ -2,6 +2,7 @@
 import { useToast } from '~/composables/useToast'
 import { EXAMPLE_CATEGORIES, type ExampleItem } from '~/utils/examples'
 import type { ConversationSummary } from '~/components/ConversationList.vue'
+import type { EquipmentRef } from '~/components/EquipmentRefCard.vue'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -13,6 +14,10 @@ interface ChatMessage {
   // Pregunta al asistente (Fase 5): chip de tool en curso y burbuja de respuesta.
   tool?: string | null
   answer?: boolean
+  // Respuesta con equipos referenciados: cards con enlace a su ficha.
+  equipment?: EquipmentRef[]
+  // Modo de presentación de la respuesta: texto o tarjetas.
+  view?: 'text' | 'cards'
   // Mensajes cargados del historial: no se re-ingieren ni se confirman.
   historical?: boolean
 }
@@ -71,6 +76,8 @@ async function openConversation(id: string) {
       extraction: m.extraction ? normalizeExtraction(m.extraction) : null,
       followup: null,
       done: true,
+      equipment: [],
+      view: 'text' as const,
       historical: true,
     }))
     scrollDown()
@@ -389,6 +396,10 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
       msg.text = t
       msg.tool = null
       msg.answer = true
+      const refs = Array.isArray(event.equipment) ? (event.equipment as EquipmentRef[]) : []
+      msg.equipment = refs.filter((r) => r && typeof r.id === 'string' && r.id)
+      // Con equipos referenciados, las tarjetas son el modo por defecto.
+      msg.view = msg.equipment.length ? 'cards' : 'text'
       scrollDown()
       break
     }
@@ -417,7 +428,7 @@ async function send() {
   if (!text || sending.value) return
   input.value = ''
   messages.value.push({ role: 'user', text, extraction: null, followup: null, done: true })
-  const msg = reactive<ChatMessage>({ role: 'assistant', text: '', extraction: null, followup: null, done: false })
+  const msg = reactive<ChatMessage>({ role: 'assistant', text: '', extraction: null, followup: null, done: false, equipment: [], view: 'text' })
   messages.value.push(msg)
   sending.value = true
   scrollDown()
@@ -558,6 +569,35 @@ const confirmed = reactive<Record<number, boolean>>({})
             <span v-if="msg.text">{{ msg.text }}</span>
             <span v-else-if="!msg.done" class="animate-pulse text-slate-400">El agente está procesando…</span>
             <span v-if="sending && i === messages.length - 1 && !msg.text" class="animate-pulse">▌</span>
+          </div>
+
+          <!-- Modos de presentación de la respuesta con equipos referenciados -->
+          <div v-if="msg.equipment && msg.equipment.length" class="mt-2 flex items-center gap-1.5">
+            <button
+              class="glass-chip text-[11px] transition"
+              :class="msg.view !== 'cards' ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-400'"
+              data-testid="view-mode-text"
+              @click="msg.view = 'text'"
+            >
+              💬 Texto
+            </button>
+            <button
+              class="glass-chip text-[11px] transition"
+              :class="msg.view === 'cards' ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-400'"
+              data-testid="view-mode-cards"
+              @click="msg.view = 'cards'"
+            >
+              🃏 Tarjetas
+            </button>
+          </div>
+
+          <!-- Tarjetas con enlace a la ficha de cada equipo -->
+          <div
+            v-if="msg.equipment && msg.equipment.length && msg.view === 'cards'"
+            class="mt-2 grid gap-2 sm:grid-cols-2"
+            data-testid="assistant-equipment-cards"
+          >
+            <EquipmentRefCard v-for="eq in msg.equipment" :key="eq.id" :eq="eq" />
           </div>
 
           <div v-if="msg.followup" class="glass-strong mt-3 flex flex-wrap items-center justify-between gap-3 border-amber-300/25 bg-amber-400/10 px-4 py-3">

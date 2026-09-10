@@ -339,3 +339,68 @@ class TestQuestionPipeline:
         assert "answer" not in types
         extraction = next(e for e in events if e["type"] == "extraction")
         assert extraction["data"]["facility"] == "Hospital Aurora"
+
+
+class TestAnswerEquipmentRefs:
+    """El evento answer lleva refs estructuradas para cards/enlaces del frontend."""
+
+    def _fake_list(self, **kwargs):
+        async def fake(**_kwargs):
+            return {
+                "total": 2,
+                "items": [
+                    {
+                        "id": "eq-1",
+                        "modality": "MR",
+                        "manufacturer": "Siemens",
+                        "model": "Vida",
+                        "state": "Confirmado",
+                        "facility_name": "Hospital Aurora",
+                        "country": "Panamá",
+                        "age_years": 6,
+                        "has_issue": True,
+                        "issue_params": ["nivel de helio: 45 % (warning)"],
+                    },
+                    {
+                        "id": "eq-2",
+                        "modality": "CT",
+                        "manufacturer": "GE",
+                        "model": None,
+                        "state": None,
+                        "facility_name": "Hospital Aurora",
+                        "country": None,
+                        "age_years": None,
+                        "has_issue": False,
+                        "issue_params": [],
+                    },
+                ],
+            }
+
+        return fake
+
+    def test_answer_incluye_equipment_refs(self, monkeypatch):
+        monkeypatch.setattr(assistant.engine, "list_equipments", self._fake_list())
+        client = _ScriptedClient(
+            [
+                '{"action":"tool","tool":"list_equipment","args":{}}',
+                '{"action":"final","answer_es":"Hay 2 equipos."}',
+            ]
+        )
+        result = run(
+            assistant.answer_question(client, "¿Qué equipos hay?", intent="question", contributor="ana")
+        )
+        answer = result.events[-1]
+        assert answer["type"] == "answer"
+        assert answer["text"] == "Hay 2 equipos."
+        refs = answer["equipment"]
+        assert [r["id"] for r in refs] == ["eq-1", "eq-2"]
+        assert refs[0]["manufacturer"] == "Siemens"
+        assert refs[0]["issues"] == ["nivel de helio: 45 % (warning)"]
+        assert refs[1]["model"] is None
+
+    def test_answer_sin_refs_no_lleva_equipment(self):
+        client = _ScriptedClient(['{"action":"final","answer_es":"Hay 5 equipos."}'])
+        result = run(
+            assistant.answer_question(client, "¿Qué equipos hay?", intent="question", contributor="ana")
+        )
+        assert result.events[-1] == {"type": "answer", "text": "Hay 5 equipos."}

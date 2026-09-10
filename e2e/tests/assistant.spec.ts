@@ -39,3 +39,26 @@ test('sugerencias de preguntas rellenan la captura', async ({ page }) => {
   const capture = page.getByLabel(/captura rápida/i)
   await expect(capture).toHaveValue(/cuántas resonancias hay en valencia/i)
 })
+
+test('respuesta con equipos: tarjetas enlazan a la ficha y el modo texto oculta', async ({ page }) => {
+  await page.goto('/chat')
+
+  await page.getByLabel(/captura rápida/i).fill('¿Qué equipos hay?')
+  await page.getByRole('button', { name: /enviar al agente/i }).click()
+
+  // Las respuestas con equipos referenciados arrancan en modo tarjetas.
+  const cards = page.getByTestId('assistant-equipment-cards')
+  await expect(cards).toBeVisible()
+  const firstCard = page.getByTestId('assistant-equipment-card').first()
+  await expect(firstCard).toBeVisible()
+  await expect(firstCard).toHaveAttribute('href', /\/equipos\//)
+
+  // El modo texto oculta las tarjetas y mantiene la burbuja con la respuesta.
+  await page.getByTestId('view-mode-text').click()
+  await expect(cards).toBeHidden()
+  await expect(page.getByTestId('assistant-answer')).not.toBeEmpty()
+
+  // De vuelta a tarjetas.
+  await page.getByTestId('view-mode-cards').click()
+  await expect(cards).toBeVisible()
+})
