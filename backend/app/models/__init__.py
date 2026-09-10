@@ -147,6 +147,25 @@ class NetworkResponse(BaseModel):
     links: list[dict[str, Any]]
 
 
+class CoreModelEntry(BaseModel):
+    id: str
+    state: str | None = None
+
+
+class CoreNodeResponse(BaseModel):
+    """Estado del nodo principal: qué está corriendo el núcleo SynapseCME."""
+
+    name: str
+    qvac_up: bool
+    qvac_url: str
+    models: list[CoreModelEntry]
+    chat_model: str
+    embed_model: str
+    stt_model: str
+    stt_up: bool
+    graph_counts: dict[str, int]
+
+
 # ---------------------------------------------------------------------------
 # Auth schemas
 # ---------------------------------------------------------------------------

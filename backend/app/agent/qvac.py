@@ -44,16 +44,24 @@ class QvacClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def list_models(self) -> list[str]:
-        """Model ids from GET /v1/models; [] when the node is down."""
+    async def list_model_info(self) -> list[dict[str, Any]]:
+        """Model entries (id + state) from GET /v1/models; [] when the node is down."""
         try:
             resp = await self._client.get("/models")
             resp.raise_for_status()
             data = resp.json()
-            return [m.get("id", "") for m in data.get("data", []) if m.get("id")]
+            return [
+                {"id": m.get("id", ""), "state": m.get("state")}
+                for m in data.get("data", [])
+                if m.get("id")
+            ]
         except Exception as exc:  # noqa: BLE001
             logger.warning("QVAC /v1/models no disponible: %s", exc)
             return []
+
+    async def list_models(self) -> list[str]:
+        """Model ids from GET /v1/models; [] when the node is down."""
+        return [m["id"] for m in await self.list_model_info()]
 
     async def is_up(self) -> bool:
         try:

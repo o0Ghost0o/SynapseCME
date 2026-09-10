@@ -3,6 +3,7 @@ export type StateTone = 'emerald' | 'sky' | 'amber' | 'rose' | 'slate'
 export function stateTone(estado?: string | null): StateTone {
   const s = (estado || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   if (s.includes('confirm')) return 'emerald'
+  if (s.includes('online') || s.includes('activ')) return 'emerald'
   if (s.includes('report')) return 'sky'
   if (s.includes('estim')) return 'amber'
   if (s.includes('desconoc') || s.includes('unknown')) return 'rose'

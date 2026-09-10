@@ -29,8 +29,10 @@ test('pregunta general: burbuja de respuesta del asistente', async ({ page }) =>
 test('sugerencias de preguntas rellenan la captura', async ({ page }) => {
   await page.goto('/chat')
 
-  // Con el panel vacío aparecen chips de preguntas de ejemplo.
-  const suggestion = page.getByRole('button', { name: /cuántas resonancias hay en valencia/i })
+  // Con el panel vacío aparecen chips de preguntas de ejemplo. El prefijo 💬
+  // evita colisionar con conversaciones del historial que puedan tener el
+  // mismo título (el panel de conversaciones también expone role="button").
+  const suggestion = page.getByRole('button', { name: /💬.*cuántas resonancias hay en valencia/i })
   await expect(suggestion).toBeVisible()
   await suggestion.click()
 

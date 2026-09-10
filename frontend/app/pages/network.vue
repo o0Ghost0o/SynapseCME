@@ -13,6 +13,21 @@ const paused = ref(false)
 const actionFilter = ref('')
 const visibleTxs = ref<TxEntry[]>([])
 
+interface CoreInfo {
+  name: string
+  qvac_up: boolean
+  qvac_url: string
+  models: { id: string; state?: string | null }[]
+  chat_model: string
+  embed_model: string
+  stt_model: string
+  stt_up: boolean
+  graph_counts: Record<string, number>
+}
+
+const core = ref<CoreInfo | null>(null)
+const coreFailed = ref(false)
+
 const ACTION_OPTIONS = [
   { value: '', label: 'Todas' },
   { value: 'crear', label: 'crear' },
@@ -65,6 +80,40 @@ async function loadNetwork() {
   }
 }
 
+async function loadCore() {
+  try {
+    const next = (await request('/api/network/core')) as CoreInfo
+    if (JSON.stringify(next) !== JSON.stringify(core.value)) core.value = next
+    coreFailed.value = false
+  } catch {
+    coreFailed.value = true
+  }
+}
+
+let coreTimer: ReturnType<typeof setInterval> | undefined
+
+// Nodos del grafo con el nodo principal inyectado al centro
+const graphNodes = computed<GraphNode[]>(() => {
+  if (!core.value) return nodes.value
+  return [
+    ...nodes.value,
+    { id: '__core__', label: core.value.name, type: 'core', state: 'online' },
+  ]
+})
+
+const graphLinks = computed<GraphLink[]>(() => {
+  if (!core.value) return links.value
+  const facilityIds = nodes.value.filter((n) => (n.type || '').toLowerCase() === 'facility').map((n) => n.id)
+  return [
+    ...links.value,
+    ...facilityIds.map((id) => ({ source: '__core__', target: id, type: 'core' })),
+  ]
+})
+
+const coreEquipmentTotal = computed(() => core.value?.graph_counts?.Equipment ?? 0)
+const coreFacilityTotal = computed(() => core.value?.graph_counts?.Facility ?? 0)
+const coreObservationTotal = computed(() => core.value?.graph_counts?.Observation ?? 0)
+
 // Pulso del nodo afectado por la última mutación
 const pulseTarget = computed<string | null>(() => {
   if (!lastMutation.value) return null
@@ -100,6 +149,12 @@ const onlineClients = computed(() => clients.value.filter((c) => (c.status || 'o
 onMounted(() => {
   ensure({ client_type: 'dashboard', name: 'Panel web SynapseCME' })
   void loadNetwork()
+  void loadCore()
+  coreTimer = setInterval(loadCore, 30_000)
+})
+
+onBeforeUnmount(() => {
+  if (coreTimer) clearInterval(coreTimer)
 })
 </script>
 
@@ -126,7 +181,7 @@ onMounted(() => {
 
     <ApiUnavailable v-if="failed" @retry="loadNetwork" />
 
-    <div v-else class="grid gap-4 xl:grid-cols-[1fr_300px]">
+    <div v-else class="grid gap-4 xl:grid-cols-[1fr_340px]">
       <!-- Lienzo del grafo -->
       <div class="glass relative min-h-[62vh] overflow-hidden p-2">
         <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm">
@@ -138,7 +193,10 @@ onMounted(() => {
             El grafo está vacío. Captura registros desde la página de Captura para poblarlo.
           </p>
         </div>
-        <ForceGraph :nodes="nodes" :links="links" :pulse-id="pulseTarget" class="min-h-[60vh]" />
+        <ForceGraph :nodes="graphNodes" :links="graphLinks" :pulse-id="pulseTarget" class="min-h-[60vh]" />
+        <p class="pointer-events-none absolute bottom-3 right-3 rounded-lg border border-white/10 bg-slate-950/50 px-2 py-1 text-[10px] text-slate-400 backdrop-blur-xl">
+          Arrastra los nodos · pasa el cursor para resaltar vecinos
+        </p>
         <div
           v-if="lastMutation"
           class="pointer-events-none absolute bottom-3 left-3 max-w-md rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100 backdrop-blur-xl"
@@ -147,8 +205,74 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Panel de clientes conectados -->
-      <div class="glass flex max-h-[62vh] flex-col p-4">
+      <div class="flex flex-col gap-4">
+        <!-- Nodo principal: qué está corriendo -->
+        <div class="glass p-4">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold text-white">Nodo principal</h2>
+            <span
+              class="glass-chip"
+              :class="core && !coreFailed ? '' : 'border-rose-300/30 bg-rose-400/15 text-rose-200'"
+            >
+              <span
+                class="h-2 w-2 rounded-full"
+                :class="core && !coreFailed ? 'bg-emerald-400' : 'bg-rose-500'"
+              />
+              {{ core && !coreFailed ? 'activo' : 'sin datos' }}
+            </span>
+          </div>
+          <template v-if="core && !coreFailed">
+            <p class="mt-1 truncate text-xs text-slate-400" :title="core.qvac_url">
+              {{ core.name }} · {{ core.qvac_url }}
+            </p>
+            <div class="mt-3 flex flex-col gap-2">
+              <div>
+                <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Inferencia QVAC</p>
+                <ul class="mt-1 flex flex-col gap-1">
+                  <li
+                    v-for="m in core.models"
+                    :key="m.id"
+                    class="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs"
+                  >
+                    <span class="truncate text-slate-200">{{ m.id }}</span>
+                    <span
+                      class="flex items-center gap-1 text-[10px]"
+                      :class="m.state === 'ready' ? 'text-emerald-300' : 'text-amber-300'"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full" :class="m.state === 'ready' ? 'bg-emerald-400' : 'bg-amber-400'" />
+                      {{ m.state || 'cargado' }}
+                    </span>
+                  </li>
+                  <li v-if="!core.models.length" class="text-xs text-rose-300">QVAC no responde</li>
+                </ul>
+                <p class="mt-1 text-[10px] text-slate-500">
+                  chat: {{ core.chat_model }} · embeddings: {{ core.embed_model }}
+                </p>
+              </div>
+              <div>
+                <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Dictado STT</p>
+                <p class="mt-1 flex items-center gap-1.5 text-xs text-slate-300">
+                  <span class="h-1.5 w-1.5 rounded-full" :class="core.stt_up ? 'bg-emerald-400' : 'bg-rose-500'" />
+                  {{ core.stt_model }}
+                </p>
+              </div>
+              <div>
+                <p class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Grafo Neo4j</p>
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="glass-chip text-[11px]">{{ coreFacilityTotal }} instalaciones</span>
+                  <span class="glass-chip text-[11px]">{{ coreEquipmentTotal }} equipos</span>
+                  <span class="glass-chip text-[11px]">{{ coreObservationTotal }} observaciones</span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <p v-else class="mt-2 text-xs text-slate-500">
+            No se pudo leer el estado del núcleo. Reintenta en unos segundos.
+          </p>
+        </div>
+
+        <!-- Panel de clientes conectados -->
+        <div class="glass flex max-h-[46vh] flex-col p-4">
         <h2 class="text-sm font-semibold text-white">Clientes conectados</h2>
         <span class="mt-0.5 text-xs text-slate-400">{{ onlineClients.length }} en línea</span>
         <ul class="mt-3 flex flex-col gap-2 overflow-y-auto">
@@ -174,6 +298,7 @@ onMounted(() => {
             Aún no hay clientes en el canal WS.
           </li>
         </ul>
+        </div>
       </div>
     </div>
 

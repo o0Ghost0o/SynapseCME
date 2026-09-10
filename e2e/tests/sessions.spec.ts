@@ -46,6 +46,7 @@ test.describe('sesiones de chat', () => {
 
   test('segunda conversación: ambas en la lista y el historial se carga al click', async ({ page }) => {
     await page.goto('/chat')
+    const before = await page.getByTestId('conversation-item').count()
 
     // Primera conversación: marcas únicas para identificar su historial. La
     // anclamos por id (data-cid): la lista se reordena por actividad y los
@@ -54,6 +55,14 @@ test.describe('sesiones de chat', () => {
     await page.getByLabel(/captura rápida/i).fill(`En el ${marker1} hay 1 resonancia Siemens de 5 años`)
     await page.getByRole('button', { name: /enviar al agente/i }).click()
     await expect(page.getByRole('heading', { name: 'Extracción estructurada' })).toBeVisible()
+    // La card aparece antes de que el SSE `done` refresque la lista: esperar
+    // a que la nueva conversación entre en la lista antes de tomar su id.
+    await expect
+      .poll(async () => page.getByTestId('conversation-item').count(), {
+        timeout: 120_000,
+        intervals: [2_000, 5_000],
+      })
+      .toBeGreaterThan(before)
     const firstCid = await page.getByTestId('conversation-item').nth(0).getAttribute('data-cid')
     expect(firstCid).toBeTruthy()
 

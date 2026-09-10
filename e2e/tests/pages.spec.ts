@@ -23,6 +23,29 @@ test.describe('vistas principales', () => {
     await expect(page.getByRole('heading', { name: /red en vivo/i })).toBeVisible()
   })
 
+  test('red en vivo: nodo principal muestra qué está corriendo', async ({ page }) => {
+    await page.goto('/network')
+    await expect(page.getByRole('heading', { name: /nodo principal/i })).toBeVisible()
+
+    // El núcleo reporta el estado de QVAC, STT y el grafo.
+    await expect(page.getByText(/inferencia qvac/i)).toBeVisible()
+    await expect(page.getByText('medpsy:q4_k_m', { exact: true })).toBeVisible()
+    await expect(page.getByText(/EMBEDDINGGEMMA/i).first()).toBeVisible()
+    await expect(page.getByText(/faster-whisper/i)).toBeVisible()
+    await expect(page.getByText(/instalaciones/i).first()).toBeVisible()
+
+    // El nodo principal está inyectado en el grafo (title nativo del nodo).
+    const canvas = page.locator('svg[aria-label="Grafo de red de instalaciones"]')
+    await expect(canvas).toBeVisible()
+    const coreTitle = canvas.locator('title', { hasText: 'Synapse Core' })
+    await expect(coreTitle).toHaveCount(1)
+
+    // Hover sobre el nodo: el tooltip sigue al cursor con su nombre.
+    const coreGroup = coreTitle.locator('xpath=..')
+    await coreGroup.locator('circle').last().hover()
+    await expect(canvas.locator('text.fill-white')).toContainText('Synapse Core')
+  })
+
   test('admin de usuarios carga (rol admin)', async ({ page }) => {
     await page.goto('/admin')
     await expect(page).toHaveURL(/\/admin/)

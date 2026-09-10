@@ -569,6 +569,17 @@ async def get_network(limit: int = NETWORK_NODE_LIMIT) -> dict[str, Any]:
         return {"nodes": nodes, "links": links}
 
 
+async def label_counts() -> dict[str, int]:
+    """Nodos por etiqueta del grafo; {} cuando Neo4j no está conectado."""
+    if _driver is None:
+        return {}
+    async with _driver.session() as session:
+        result = await session.run(
+            "MATCH (n) RETURN labels(n)[0] AS label, count(*) AS c"
+        )
+        return {row["label"]: row["c"] async for row in result}
+
+
 def _row_to_parameter(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row["id"],
