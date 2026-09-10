@@ -128,7 +128,9 @@ async def generate_conversation_title(
                     },
                 ],
                 temperature=0.0,
-                max_tokens=96,
+                # MedPsy is a reasoning model: it thinks before answering, so
+                # the budget must cover the reasoning trace plus the title.
+                max_tokens=256,
             )
             if reply:
                 title = reply.strip().strip('"').strip()

@@ -47,11 +47,15 @@ test.describe('sesiones de chat', () => {
   test('segunda conversación: ambas en la lista y el historial se carga al click', async ({ page }) => {
     await page.goto('/chat')
 
-    // Primera conversación: marcas únicas para identificar su historial.
+    // Primera conversación: marcas únicas para identificar su historial. La
+    // anclamos por id (data-cid): la lista se reordena por actividad y los
+    // títulos los genera el modelo, así que la posición no es estable.
     const marker1 = `Hospital Marcador Uno ${Date.now()}`
     await page.getByLabel(/captura rápida/i).fill(`En el ${marker1} hay 1 resonancia Siemens de 5 años`)
     await page.getByRole('button', { name: /enviar al agente/i }).click()
     await expect(page.getByRole('heading', { name: 'Extracción estructurada' })).toBeVisible()
+    const firstCid = await page.getByTestId('conversation-item').nth(0).getAttribute('data-cid')
+    expect(firstCid).toBeTruthy()
 
     // Segunda conversación (botón Nueva reinicia el panel).
     await page.getByTestId('new-conversation').click()
@@ -72,11 +76,10 @@ test.describe('sesiones de chat', () => {
       )
       .toBeGreaterThanOrEqual(2)
 
-    // Click en la conversación anterior (la lista se ordena por actividad
-    // descendente: índice 0 = la activa recién creada, índice 1 = la primera).
-    // El historial se carga con su mensaje y la card reconstruida; el
-    // registro histórico no admite re-confirmación.
-    await page.getByTestId('conversation-item').nth(1).click()
+    // Click en la primera conversación por id: el historial se carga con su
+    // mensaje y la card reconstruida; el registro histórico no admite
+    // re-confirmación.
+    await page.locator(`[data-cid="${firstCid}"]`).click()
     await expect(page.getByText(marker1)).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Extracción estructurada' })).toBeVisible()
     const historyConfirm = page.getByRole('button', { name: /registro histórico|confirmar registro/i })

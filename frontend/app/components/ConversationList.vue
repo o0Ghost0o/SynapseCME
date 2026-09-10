@@ -55,6 +55,7 @@ function relDate(iso: string): string {
               : 'border border-transparent hover:bg-white/5'
           "
           :data-testid="'conversation-item'"
+          :data-cid="conv.id"
           role="button"
           tabindex="0"
           @click="emit('select', conv.id)"
