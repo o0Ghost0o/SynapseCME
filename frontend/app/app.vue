@@ -81,7 +81,7 @@ onMounted(() => {
           </NuxtLink>
         </div>
 
-        <!-- Hamburger (móvil/tablet) -->
+        <!-- Hamburger (móvil/tablet): único control visible en pantallas pequeñas -->
         <div class="relative ml-auto lg:hidden">
           <button
             class="btn-ghost px-3 py-1.5 text-sm"
@@ -90,12 +90,12 @@ onMounted(() => {
             data-testid="nav-menu-button"
             @click="menuOpen = !menuOpen"
           >
-            {{ menuOpen ? '✕' : '☰' }} Menú
+            {{ menuOpen ? '✕' : '☰' }}<span class="hidden sm:inline"> Menú</span>
           </button>
           <Transition name="toast">
             <div
               v-if="menuOpen"
-              class="glass-strong absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl p-2"
+              class="glass-strong absolute right-0 top-full z-50 mt-2 w-60 rounded-2xl p-2"
               data-testid="nav-menu"
             >
               <NuxtLink
@@ -107,29 +107,38 @@ onMounted(() => {
               >
                 {{ link.label }}
               </NuxtLink>
-              <div class="mt-1 flex items-center gap-2 border-t border-white/10 px-3 pt-2.5">
-                <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
-                <span class="text-xs text-slate-300">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
+              <div class="mt-1 border-t border-white/10 px-3 pt-2.5">
+                <p v-if="user" class="text-xs font-semibold leading-tight text-white">{{ user.full_name || user.username }}</p>
+                <p v-if="user" class="mb-2 text-[10px] leading-tight text-slate-400">{{ roleLabel(user.role) }}</p>
+                <div class="flex items-center gap-2" :title="connectionDot.label">
+                  <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
+                  <span class="text-xs text-slate-300">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
+                </div>
+                <button
+                  class="btn-ghost mt-2 block w-full px-3 py-2 text-left text-xs"
+                  title="Cerrar sesión"
+                  data-testid="nav-logout"
+                  @click="logout()"
+                >
+                  ⏻ Cerrar sesión
+                </button>
               </div>
             </div>
           </Transition>
         </div>
 
-        <div class="hidden items-center gap-2 pl-2 sm:flex" :title="connectionDot.label">
+        <div class="hidden items-center gap-2 pl-2 lg:flex" :title="connectionDot.label">
           <span class="glass-chip">
             <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
             {{ connectionDot.online ? 'En línea' : 'Sin conexión' }}
           </span>
         </div>
 
-        <div v-if="isAuthenticated && user" class="flex items-center gap-2 border-l border-white/10 pl-3">
-          <div class="hidden text-right md:block">
+        <div v-if="isAuthenticated && user" class="hidden items-center gap-2 border-l border-white/10 pl-3 lg:flex">
+          <div class="text-right">
             <p class="text-xs font-semibold leading-tight text-white">{{ user.full_name || user.username }}</p>
             <p class="text-[10px] leading-tight text-slate-400">{{ roleLabel(user.role) }}</p>
           </div>
-          <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200 md:hidden">
-            {{ user.full_name || user.username }}
-          </span>
           <button class="btn-ghost px-3 py-1.5 text-xs" title="Cerrar sesión" @click="logout()">
             ⏻ Cerrar sesión
           </button>
