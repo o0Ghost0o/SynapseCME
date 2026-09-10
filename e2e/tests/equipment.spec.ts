@@ -54,7 +54,11 @@ test.describe('filtros del dashboard', () => {
     // (los datos vivos de esta instalación pueden tener una sola modalidad).
     await page.getByRole('button', { name: /limpiar filtros/i }).click()
     await expect(page.getByLabel(/modalidad/i)).toHaveValue('')
-    await expect(cards.first().locator('h3')).toHaveText('MR')
+    // Tras limpiar vuelven todas las modalidades: la card MR sigue presente
+    // (no necesariamente primero — el orden depende de los datos seed).
+    await expect(
+      cards.filter({ has: page.locator('h3', { hasText: 'MR' }) }).first(),
+    ).toBeVisible()
     expect(await cards.count()).toBeGreaterThanOrEqual(1)
   })
 

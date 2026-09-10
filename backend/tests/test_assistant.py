@@ -25,45 +25,32 @@ def _chat_response(text: str) -> httpx.Response:
 
 
 class TestRouter:
-    def _client(self, label: str) -> QvacClient:
-        def handler(request):
-            assert request.url.path == "/v1/chat/completions"
-            body = json.loads(request.content)
-            assert body["stream"] is False
-            return _chat_response(label)
-
-        return make_client(handler)
+    """El router es determinista (MedPsy es un modelo de razonamiento: una
+    llamada LLM de clasificación quema tokens en reasoning_content y añade
+    latencia a cada mensaje)."""
 
     def test_question(self):
-        client = self._client("question")
-        assert run(assistant.classify_intent(client, "¿Cuántas resonancias hay en Valencia?")) == "question"
-        run(client.aclose())
+        assert (
+            assistant.classify_intent(None, "¿Cuántas resonancias hay en Valencia?") == "question"
+        )
+
+    def test_question_sin_signo_de_interrogacion(self):
+        assert assistant.classify_intent(None, "qué equipos hay") == "question"
 
     def test_observation(self):
-        client = self._client("observation")
         assert (
-            run(assistant.classify_intent(client, "En el Hospital Aurora hay 2 resonancias Siemens de 6 años"))
+            assistant.classify_intent(None, "En el Hospital Aurora hay 2 resonancias Siemens de 6 años")
             == "observation"
         )
-        run(client.aclose())
 
     def test_mixed(self):
-        client = self._client("mixed")
         assert (
-            run(assistant.classify_intent(client, "Hay 2 resonancias en Valencia, ¿cuántas tenemos registradas?"))
+            assistant.classify_intent(None, "Hay 2 resonancias en Valencia, ¿cuántas tenemos registradas?")
             == "mixed"
         )
-        run(client.aclose())
 
     def test_garbage_defaults_to_observation(self):
-        client = self._client("I am not sure, maybe banana")
-        assert run(assistant.classify_intent(client, "hola")) == "observation"
-        run(client.aclose())
-
-    def test_unavailable_model_defaults_to_observation(self):
-        client = make_client(lambda req: httpx.Response(503))
-        assert run(assistant.classify_intent(client, "¿Qué equipos hay?")) == "observation"
-        run(client.aclose())
+        assert assistant.classify_intent(None, "hola") == "observation"
 
 
 def _parse_sse(stream: str):
@@ -253,7 +240,6 @@ class TestQuestionPipeline:
         self._scripted_service_client(
             monkeypatch,
             [
-                "question",
                 '{"action":"tool","tool":"list_equipment","args":{}}',
                 '{"action":"final","answer_es":"Hay 3 equipos registrados."}',
             ],
@@ -275,7 +261,7 @@ class TestQuestionPipeline:
     def test_question_persiste_mensaje_sin_extraccion(self, monkeypatch):
         self._scripted_service_client(
             monkeypatch,
-            ["question", '{"action":"final","answer_es":"Respuesta."}'],
+            ['{"action":"final","answer_es":"Respuesta."}'],
         )
         saved = []
 
@@ -306,7 +292,6 @@ class TestQuestionPipeline:
         self._scripted_service_client(
             monkeypatch,
             [
-                "mixed",
                 '{"action":"tool","tool":"ingest_observation","args":{"text":"En el Hospital Aurora hay 1 tomógrafo GE de 4 años"}}',
                 '{"action":"final","answer_es":"Registrado."}',
             ],

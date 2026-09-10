@@ -380,7 +380,7 @@ class TestTitleGeneration:
         assert fake.convs[cid]["title"] == title
         call = client.calls[0]
         assert call["temperature"] == 0.0
-        assert call["max_tokens"] == 20
+        assert call["max_tokens"] == 96
         assert OBSERVATION in call["messages"][-1]["content"]
 
     def test_llm_failure_falls_back_to_first_words(self, monkeypatch):

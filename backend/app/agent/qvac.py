@@ -144,6 +144,10 @@ class QvacClient:
             return None
         message = choices[0].get("message") or {}
         text = message.get("content")
+        if not isinstance(text, str) or not text.strip():
+            # MedPsy (reasoning model) may exhaust max_tokens on reasoning_content
+            # and leave content null; fall back to the reasoning trace.
+            text = message.get("reasoning_content")
         return text if isinstance(text, str) and text.strip() else None
 
     async def embed(self, text: str, model: str | None = None) -> list[float] | None:

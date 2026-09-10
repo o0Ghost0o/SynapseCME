@@ -128,10 +128,12 @@ async def generate_conversation_title(
                     },
                 ],
                 temperature=0.0,
-                max_tokens=20,
+                max_tokens=96,
             )
             if reply:
                 title = reply.strip().strip('"').strip()
+                if "\n" in title:
+                    title = title.splitlines()[-1].strip().strip('"').strip()
         except Exception as exc:  # noqa: BLE001 - titles must never break chat
             logger.warning("Generación de título falló; usando fallback: %s", exc)
     if not title:
@@ -326,7 +328,7 @@ async def handle_chat(
     # extraction pipeline below unchanged.
     intent = assistant.INTENT_OBSERVATION
     if client is not None:
-        intent = await assistant.classify_intent(client, request.message)
+        intent = assistant.classify_intent(client, request.message)
     if intent in (assistant.INTENT_QUESTION, assistant.INTENT_MIXED) and client is not None:
         async for chunk in _handle_question(
             request, conversation_id, client, contributor, full_name, started, intent

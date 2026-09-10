@@ -39,25 +39,6 @@ APOLOGY_ANSWER = (
     "Inténtalo de nuevo con más detalle."
 )
 
-ROUTER_SYSTEM_PROMPT = """You are an intent classifier for a medical equipment field-app assistant.
-Classify the user's Spanish message into exactly one label:
-- "question": the user only asks for information (counts, lists, status, details). No new field data is given.
-- "observation": the user only reports new field data (equipment seen, quantities, parameters, problems). No question is asked.
-- "mixed": the user both reports new field data AND asks a question in the same message.
-Reply with ONLY the label word: question, observation, or mixed. No punctuation, no explanation.
-
-Examples:
-User: En el Hospital Universitario La Fe hay 1 resonancia Siemens MAGNETOM Vida de 6 anos; el nivel de helio esta al 45%.
-Label: observation
-User: Cuantos equipos de resonancia hay en Valencia?
-Label: question
-User: Que equipos necesitan mantenimiento?
-Label: question
-User: Hay 2 resonancias en Valencia, cuantas tenemos registradas en total?
-Label: mixed
-User: El tomografo del Hospital Aurora tiene el tubo al 15 por ciento de vida util.
-Label: observation"""
-
 TOOL_SYSTEM_PROMPT = """You are the SynapseCME assistant, answering in Spanish questions about medical \
 equipment installed in hospitals. You can call tools. Reply with ONLY one JSON object per turn, \
 no text outside the JSON:
@@ -113,27 +94,35 @@ def parse_json_object(text: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-async def classify_intent(client: QvacClient, message: str) -> str:
-    """question | observation | mixed. Defaults to observation on any doubt
-    (preserves the historical extraction-pipeline behavior)."""
-    try:
-        reply = await client.chat(
-            [
-                {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
-                {"role": "user", "content": f"User: {message}\nLabel:"},
-            ],
-            temperature=0.0,
-            max_tokens=10,
-        )
-    except Exception as exc:  # noqa: BLE001 - routing must never break chat
-        logger.warning("Router de intención falló; se asume observation: %s", exc)
-        return INTENT_OBSERVATION
-    if not reply:
-        return INTENT_OBSERVATION
-    match = re.search(r"\b(question|observation|mixed)\b", reply.lower())
-    if match is None:
-        return INTENT_OBSERVATION
-    return match.group(1)
+# MedPsy is a reasoning model: even short routing calls burn most tokens on
+# reasoning_content and the label arrives late or never, adding ~30-60s of
+# latency to every message. Intent routing is therefore deterministic:
+# - "?" or an interrogative start => the user asks something (question)
+# - digits in the message => the user reports field data (observation/mixed)
+_QUESTION_MARK_RE = re.compile(r"[?¿]")
+_INTERROGATIVE_START_RE = re.compile(
+    r"^\s*(qu[ée]|cu[áa]l|cu[áa]nt\w*|c[óo]mo|d[óo]nde|cu[áa]ndo|qui[ée]n)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_intent(client: QvacClient | None, message: str) -> str:
+    """question | observation | mixed, via deterministic Spanish heuristics.
+
+    ``client`` is kept for signature compatibility; routing no longer calls
+    the LLM (see module note above). Anything that is not clearly a question
+    is treated as an observation, preserving the historical capture flow.
+    """
+    text = message or ""
+    has_question = bool(_QUESTION_MARK_RE.search(text)) or bool(
+        _INTERROGATIVE_START_RE.match(text)
+    )
+    has_field_data = any(ch.isdigit() for ch in text)
+    if has_question and has_field_data:
+        return INTENT_MIXED
+    if has_question:
+        return INTENT_QUESTION
+    return INTENT_OBSERVATION
 
 
 def _truncate(text: str, limit: int = MAX_TOOL_RESULT_CHARS) -> str:
