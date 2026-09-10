@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast'
-import type { ExampleItem } from '~/utils/examples'
+import { EXAMPLE_CATEGORIES, type ExampleItem } from '~/utils/examples'
 import type { ConversationSummary } from '~/components/ConversationList.vue'
 
 interface ChatMessage {
@@ -10,6 +10,9 @@ interface ChatMessage {
   followup: string | null
   done: boolean
   error?: boolean
+  // Pregunta al asistente (Fase 5): chip de tool en curso y burbuja de respuesta.
+  tool?: string | null
+  answer?: boolean
   // Mensajes cargados del historial: no se re-ingieren ni se confirman.
   historical?: boolean
 }
@@ -259,6 +262,20 @@ function applyExample(example: ExampleItem) {
   show('Ejemplo pegado en la captura')
 }
 
+// Sugerencias de preguntas al asistente (categoría "Preguntas" de los ejemplos).
+const questionExamples = computed(
+  () => EXAMPLE_CATEGORIES.find((c) => c.id === 'preguntas')?.examples ?? [],
+)
+
+// Nombres legibles para el chip de actividad de las tools del asistente.
+const TOOL_LABELS: Record<string, string> = {
+  list_equipment: 'equipos',
+  get_equipment_detail: 'detalle de equipo',
+  search_observations: 'observaciones previas',
+  get_facility_info: 'instalación',
+  ingest_observation: 'registrando observación',
+}
+
 const FIELD_DEFS: Array<{ key: string; label: string; aliases: string[] }> = [
   { key: 'instalacion', label: 'Instalación', aliases: ['instalacion', 'installation', 'facility', 'hospital', 'site'] },
   { key: 'ciudad', label: 'Ciudad', aliases: ['ciudad', 'city', 'town'] },
@@ -359,6 +376,22 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
     case 'followup':
       msg.followup = typeof event.question === 'string' ? event.question : String(event.question ?? '')
       break
+    case 'tool': {
+      // Actividad del asistente consultando el grafo: chip temporal que la
+      // respuesta (evento answer) o el fin del stream reemplaza.
+      msg.tool = typeof event.name === 'string' && event.name ? event.name : 'grafo'
+      scrollDown()
+      break
+    }
+    case 'answer': {
+      // Respuesta normal del asistente a una pregunta (sin card de extracción).
+      const t = typeof event.text === 'string' ? event.text : ''
+      msg.text = t
+      msg.tool = null
+      msg.answer = true
+      scrollDown()
+      break
+    }
     case 'done':
       msg.done = true
       // Ancla la conversación activa (creada server-side si no venía) y
@@ -368,7 +401,7 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
         activeConversationId.value = event.conversation_id
         void loadConversations()
       }
-      show('Registro guardado en el grafo')
+      show(msg.answer ? 'Respuesta del asistente' : 'Registro guardado en el grafo')
       break
   }
 }
@@ -486,12 +519,23 @@ const confirmed = reactive<Record<number, boolean>>({})
     </div>
 
     <div ref="listEl" class="glass flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <div v-if="!messages.length" class="m-auto max-w-sm text-center text-sm text-slate-400">
+      <div v-if="!messages.length" class="m-auto max-w-md text-center text-sm text-slate-400">
         <p class="text-4xl">🎙️</p>
         <p class="mt-3">
           Ejemplo: «En el Hospital General de Valencia hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad
           confirmada».
         </p>
+        <p class="mt-3 text-slate-500">¿Prefieres preguntar? Toca una sugerencia o escribe tu pregunta:</p>
+        <div class="mt-3 flex flex-wrap justify-center gap-2">
+          <button
+            v-for="q in questionExamples"
+            :key="q.id"
+            class="glass-chip text-indigo-200 transition hover:border-indigo-300/50 hover:bg-indigo-400/20"
+            @click="applyExample(q)"
+          >
+            💬 {{ q.text }}
+          </button>
+        </div>
       </div>
 
       <template v-for="(msg, i) in messages" :key="i">
@@ -500,9 +544,16 @@ const confirmed = reactive<Record<number, boolean>>({})
         </div>
 
         <div v-else class="mr-auto w-full max-w-[92%]">
+          <span
+            v-if="msg.tool"
+            class="glass-chip mb-2 inline-flex items-center gap-1.5 border-indigo-300/25 bg-indigo-400/10 text-indigo-200"
+          >
+            <span class="animate-pulse">🔎</span> Consultando {{ TOOL_LABELS[msg.tool] || msg.tool }}…
+          </span>
           <div
             class="rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm backdrop-blur-xl"
             :class="msg.error ? 'border-rose-300/25 bg-rose-400/10 text-rose-200' : 'border-white/15 bg-white/10 text-slate-100'"
+            :data-testid="msg.answer ? 'assistant-answer' : undefined"
           >
             <span v-if="msg.text">{{ msg.text }}</span>
             <span v-else-if="!msg.done" class="animate-pulse text-slate-400">El agente está procesando…</span>

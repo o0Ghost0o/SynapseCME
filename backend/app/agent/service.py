@@ -15,6 +15,7 @@ import uuid
 from typing import Any, AsyncIterator
 
 from app import db
+from app.agent import assistant
 from app.agent import extractor as rule_extractor
 from app.agent import rag
 from app.agent.qvac import QvacClient, QvacError
@@ -320,6 +321,19 @@ async def handle_chat(
     cold_start = False  # kept for build_metrics signature stability; QVAC preloads models
     client = _client
 
+    # 0) Intent routing (Fase 5): questions go to the bounded tool loop;
+    # observations (default, also when the model is unreachable) keep the
+    # extraction pipeline below unchanged.
+    intent = assistant.INTENT_OBSERVATION
+    if client is not None:
+        intent = await assistant.classify_intent(client, request.message)
+    if intent in (assistant.INTENT_QUESTION, assistant.INTENT_MIXED) and client is not None:
+        async for chunk in _handle_question(
+            request, conversation_id, client, contributor, full_name, started, intent
+        ):
+            yield chunk
+        return
+
     system_prompt = EXTRACTION_SYSTEM_PROMPT
     if client is not None:
         try:
@@ -449,6 +463,71 @@ async def handle_chat(
     # 7) Title for new conversations: fire-and-forget after `done`. The
     # client refreshes its list via GET /api/conversations (the title lands
     # seconds later); never block the SSE on this call.
+    if conversation_id is not None:
+        _schedule_title(client, conversation_id, request.message, emitted_text)
+
+
+async def _handle_question(
+    request: ChatRequest,
+    conversation_id: str | None,
+    client: QvacClient,
+    contributor: str,
+    full_name: str | None,
+    started: float,
+    intent: str,
+) -> AsyncIterator[str]:
+    """SSE stream for question/mixed intents: bounded tool loop (assistant.py).
+
+    Emits the new backwards-compatible events ``tool`` (one per tool call) and
+    ``answer`` (final Spanish answer), then ``done`` with the same
+    conversation anchoring as the observation pipeline. The assistant message
+    is persisted with ``extraction=None``; the title is scheduled
+    fire-and-forget exactly like the observation path.
+    """
+    request_id = uuid.uuid4().hex[:12]
+    result = await assistant.answer_question(
+        client,
+        request.message,
+        intent=intent,
+        contributor=contributor,
+        client_type=request.client_type,
+        full_name=full_name,
+        data_dir=settings.rag_dir,
+    )
+    emitted_text = ""
+    for event in result.events:
+        if event.get("type") == "answer":
+            emitted_text = str(event.get("text") or "")
+        yield _sse(event)
+
+    total_ms = int((time.perf_counter() - started) * 1000)
+    metrics = build_metrics(
+        model=client.model,
+        ttft_ms=total_ms,
+        total_ms=total_ms,
+        prompt_text=request.message + assistant.TOOL_SYSTEM_PROMPT,
+        generated_text=result.generated,
+        usage=None,
+        cold_start=False,
+    )
+    try:
+        await db.log_perf(request_id, metrics)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo guardar perf_log: %s", exc)
+
+    if conversation_id is not None:
+        try:
+            await db.add_chat_message(
+                conversation_id, "assistant", emitted_text, extraction=None
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("No se pudo persistir el mensaje del asistente: %s", exc)
+
+    done_payload: dict[str, Any] = {"type": "done", "transaction_id": request_id}
+    if conversation_id is not None:
+        done_payload["conversation_id"] = conversation_id
+    yield _sse(done_payload)
+
     if conversation_id is not None:
         _schedule_title(client, conversation_id, request.message, emitted_text)
 
