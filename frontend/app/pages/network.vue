@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { GraphLink, GraphNode } from '~/components/ForceGraph.vue'
 import { useEvents } from '~/composables/useEvents'
+import { GRAPH_TYPE_COLORS, GRAPH_TYPE_LABELS } from '~/utils/graph'
+import { STATE_RING_COLORS } from '~/utils/states'
+import type { StateTone } from '~/utils/states'
 
 const { request } = useApi()
 const { clients, txs, lastMutation, status: wsStatus, ensure } = useEvents()
@@ -114,6 +117,34 @@ const coreEquipmentTotal = computed(() => core.value?.graph_counts?.Equipment ??
 const coreFacilityTotal = computed(() => core.value?.graph_counts?.Facility ?? 0)
 const coreObservationTotal = computed(() => core.value?.graph_counts?.Observation ?? 0)
 
+// ---------------------------------------------------------------------------
+// Leyenda: niveles (colores por tipo de nodo) y estados (anillo)
+// ---------------------------------------------------------------------------
+
+const graphEl = ref<{ resetView: () => void } | null>(null)
+
+/** Niveles presentes en el grafo, con su color (los alias comparten etiqueta). */
+const typeLegend = computed(() => {
+  const seen = new Map<string, string>()
+  for (const n of graphNodes.value) {
+    const key = (n.type || '').toLowerCase()
+    const label = GRAPH_TYPE_LABELS[key]
+    if (label && !seen.has(label)) seen.set(label, GRAPH_TYPE_COLORS[key] || '#94a3b8')
+  }
+  return [...seen.entries()].map(([label, color]) => ({ label, color }))
+})
+
+const stateLegend = computed(() => {
+  const states = new Set(graphNodes.value.map((n) => stateTone(n.state)))
+  const meta: Array<{ tone: StateTone; label: string }> = [
+    { tone: 'emerald', label: 'confirmado / en línea' },
+    { tone: 'sky', label: 'reportado' },
+    { tone: 'amber', label: 'estimado' },
+    { tone: 'rose', label: 'desconocido' },
+  ]
+  return meta.filter((m) => states.has(m.tone))
+})
+
 // Pulso del nodo afectado por la última mutación
 const pulseTarget = computed<string | null>(() => {
   if (!lastMutation.value) return null
@@ -193,9 +224,40 @@ onBeforeUnmount(() => {
             El grafo está vacío. Captura registros desde la página de Captura para poblarlo.
           </p>
         </div>
-        <ForceGraph :nodes="graphNodes" :links="graphLinks" :pulse-id="pulseTarget" class="min-h-[60vh]" />
+        <ForceGraph ref="graphEl" :nodes="graphNodes" :links="graphLinks" :pulse-id="pulseTarget" class="min-h-[60vh]" />
+
+        <!-- Leyenda de niveles (color del nodo) y estados (anillo) -->
+        <div class="pointer-events-none absolute left-3 top-3 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 backdrop-blur-xl">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Niveles</p>
+          <ul class="mt-1 flex flex-col gap-1">
+            <li v-for="t in typeLegend" :key="t.label" class="flex items-center gap-1.5 text-[11px] text-slate-200">
+              <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ backgroundColor: t.color }" />
+              {{ t.label }}
+            </li>
+          </ul>
+          <template v-if="stateLegend.length">
+            <p class="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Estado</p>
+            <ul class="mt-1 flex flex-col gap-1">
+              <li v-for="s in stateLegend" :key="s.tone" class="flex items-center gap-1.5 text-[11px] text-slate-200">
+                <span
+                  class="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-transparent"
+                  :style="{ borderColor: STATE_RING_COLORS[s.tone] }"
+                />
+                {{ s.label }}
+              </li>
+            </ul>
+          </template>
+        </div>
+
+        <button
+          class="absolute right-3 top-3 rounded-lg border border-white/10 bg-slate-950/50 px-2 py-1 text-[10px] text-slate-300 backdrop-blur-xl transition hover:border-indigo-300/30 hover:text-white"
+          @click="graphEl?.resetView()"
+        >
+          ⤢ Vista inicial
+        </button>
+
         <p class="pointer-events-none absolute bottom-3 right-3 rounded-lg border border-white/10 bg-slate-950/50 px-2 py-1 text-[10px] text-slate-400 backdrop-blur-xl">
-          Arrastra los nodos · pasa el cursor para resaltar vecinos
+          Arrastra los nodos · arrastra el fondo para desplazarte · rueda para zoom
         </p>
         <div
           v-if="lastMutation"

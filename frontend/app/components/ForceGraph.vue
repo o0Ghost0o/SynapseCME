@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { STATE_RING_COLORS } from '~/utils/states'
+import { GRAPH_TYPE_COLORS } from '~/utils/graph'
 
 export interface GraphNode {
   id: string
@@ -36,24 +37,7 @@ const mousePos = ref<{ x: number; y: number } | null>(null)
 const activePulse = ref<string | null>(null)
 const svgEl = ref<SVGSVGElement | null>(null)
 
-const TYPE_COLORS: Record<string, string> = {
-  core: '#f8fafc',
-  instalacion: '#818cf8',
-  facility: '#818cf8',
-  hospital: '#818cf8',
-  equipo: '#38bdf8',
-  equipment: '#38bdf8',
-  asset: '#38bdf8',
-  modelo: '#34d399',
-  model: '#34d399',
-  fabricante: '#f472b6',
-  manufacturer: '#f472b6',
-  region: '#a78bfa',
-  pais: '#a78bfa',
-  country: '#a78bfa',
-  cliente: '#fbbf24',
-  client: '#fbbf24',
-}
+const TYPE_COLORS = GRAPH_TYPE_COLORS
 const FALLBACK_PALETTE = ['#818cf8', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c']
 
 function colorFor(type?: string): string {
@@ -231,12 +215,52 @@ watch(
 )
 
 // ---------------------------------------------------------------------------
+// Vista: desplazamiento (pan), zoom y reinicio
+// ---------------------------------------------------------------------------
+
+/** Centro visible (coordenadas de la simulación) y factor de zoom. */
+const view = ref({ x: 0, y: 0, k: 1 })
+const MIN_K = 0.35
+const MAX_K = 4
+
+const viewBox = computed(() => {
+  const { x, y, k } = view.value
+  return `${x - (W / 2) * k} ${y - (H / 2) * k} ${W * k} ${H * k}`
+})
+
+let panState: { startX: number; startY: number; viewX: number; viewY: number } | null = null
+
+function onSvgDown(evt: PointerEvent) {
+  if (dragId) return
+  const p = toSvg(evt)
+  panState = { startX: p.x, startY: p.y, viewX: view.value.x, viewY: view.value.y }
+  svgEl.value?.setPointerCapture(evt.pointerId)
+}
+
+function onWheel(evt: WheelEvent) {
+  evt.preventDefault()
+  const p = toSvg(evt)
+  const k = Math.min(MAX_K, Math.max(MIN_K, view.value.k * Math.exp(-evt.deltaY * 0.0012)))
+  const ratio = k / view.value.k
+  // El punto bajo el cursor permanece fijo al cambiar el zoom.
+  view.value.x = p.x - (p.x - view.value.x) * ratio
+  view.value.y = p.y - (p.y - view.value.y) * ratio
+  view.value.k = k
+}
+
+function resetView() {
+  view.value = { x: 0, y: 0, k: 1 }
+}
+
+defineExpose({ resetView })
+
+// ---------------------------------------------------------------------------
 // Arrastre + tooltip que sigue el cursor
 // ---------------------------------------------------------------------------
 
 let dragId: string | null = null
 
-function toSvg(evt: PointerEvent): { x: number; y: number } {
+function toSvg(evt: { clientX: number; clientY: number }): { x: number; y: number } {
   const svg = svgEl.value
   if (!svg) return { x: 0, y: 0 }
   const ctm = svg.getScreenCTM()
@@ -264,6 +288,11 @@ function onSvgMove(evt: PointerEvent) {
       pt.vx = 0
       pt.vy = 0
     }
+  } else if (panState) {
+    // El desplazamiento en coordenadas de pantalla hay que dividirlo por k
+    // para convertirlo a coordenadas de la simulación.
+    view.value.x = panState.viewX - (p.x - panState.startX) / view.value.k
+    view.value.y = panState.viewY - (p.y - panState.startY) / view.value.k
   }
 }
 
@@ -274,6 +303,7 @@ function onSvgUp(evt: PointerEvent) {
     svgEl.value?.releasePointerCapture(evt.pointerId)
     reheat(0.5)
   }
+  panState = null
 }
 
 function onSvgLeave() {
@@ -312,8 +342,12 @@ function linkOpacity(link: GraphLink): number {
   return isLinkHighlighted(link) ? 1 : 0.06
 }
 
-/** Tooltip anclado al cursor, volteado cerca del borde derecho. */
-const tooltipFlip = computed(() => (mousePos.value ? mousePos.x > W / 4 : false))
+/** Tooltip anclado al cursor, volteado cerca del borde derecho visible. */
+const tooltipFlip = computed(() => {
+  const m = mousePos.value
+  if (!m) return false
+  return m.x - view.value.x > (W * view.value.k) / 4
+})
 const tooltipX = computed(() => {
   const m = mousePos.value
   if (!m) return 0
@@ -329,15 +363,17 @@ function point(id: string): SimPoint {
 <template>
   <svg
     ref="svgEl"
-    :viewBox="`${-W / 2} ${-H / 2} ${W} ${H}`"
-    class="h-full w-full touch-none select-none"
+    :viewBox="viewBox"
+    class="h-full w-full cursor-grab touch-none select-none active:cursor-grabbing"
     preserveAspectRatio="xMidYMid meet"
     role="img"
     aria-label="Grafo de red de instalaciones"
+    @pointerdown="onSvgDown"
     @pointermove="onSvgMove"
     @pointerup="onSvgUp"
     @pointercancel="onSvgUp"
     @pointerleave="onSvgLeave"
+    @wheel="onWheel"
   >
     <g>
       <line

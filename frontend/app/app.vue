@@ -18,6 +18,15 @@ const navLinks = computed(() => {
 
 const route = useRoute()
 const menuOpen = ref(false)
+
+// Instalación PWA: el módulo captura beforeinstallprompt y expone el prompt.
+const { $pwa } = useNuxtApp()
+const canInstall = computed(
+  () => !!$pwa && !$pwa.isInstalled && $pwa.isInstallable === true,
+)
+async function installApp() {
+  await $pwa?.showInstallPrompt()
+}
 watch(
   () => route.fullPath,
   () => {
@@ -115,6 +124,13 @@ onMounted(() => {
                   <span class="text-xs text-slate-300">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
                 </div>
                 <button
+                  v-if="canInstall"
+                  class="btn-ghost mt-2 block w-full px-3 py-2 text-left text-xs"
+                  @click="installApp"
+                >
+                  ⬇ Instalar app
+                </button>
+                <button
                   class="btn-ghost mt-2 block w-full px-3 py-2 text-left text-xs"
                   title="Cerrar sesión"
                   data-testid="nav-logout"
@@ -128,6 +144,14 @@ onMounted(() => {
         </div>
 
         <div class="hidden items-center gap-2 pl-2 lg:flex" :title="connectionDot.label">
+          <button
+            v-if="canInstall"
+            class="btn-ghost px-3 py-1.5 text-xs"
+            title="Instalar SynapseCME como aplicación"
+            @click="installApp"
+          >
+            ⬇ Instalar app
+          </button>
           <span class="glass-chip">
             <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
             {{ connectionDot.online ? 'En línea' : 'Sin conexión' }}

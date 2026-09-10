@@ -54,6 +54,13 @@ export default defineNuxtConfig({
     client: {
       installPrompt: true,
     },
+    devOptions: {
+      // Registra el service worker también en `nuxi dev` (sin esto la PWA
+      // solo existe en build de producción).
+      enabled: true,
+      navigateFallback: '/offline',
+      suppressWarnings: true,
+    },
   },
   nitro: {
     // Genera .output/public/index.html para que Capacitor tenga un punto de entrada estático.
