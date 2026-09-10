@@ -48,6 +48,13 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class EquipmentChatRequest(BaseModel):
+    """Mensaje del mini-chat de revisión anclado a un equipo registrado."""
+
+    message: str
+    client_type: str | None = None
+
+
 class IngestResult(BaseModel):
     facility_created: bool = False
     facility_id: str | None = None

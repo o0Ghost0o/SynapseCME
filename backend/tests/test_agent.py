@@ -4,8 +4,8 @@ import json
 import httpx
 
 from app.agent.qvac import QvacClient
-from app.agent.service import handle_chat, parse_llm_json
-from app.models import ChatRequest
+from app.agent.service import handle_chat, handle_equipment_chat, parse_llm_json
+from app.models import ChatRequest, IngestResult
 
 
 def _sse_body(*chunks: dict) -> bytes:
@@ -221,3 +221,204 @@ class TestParameterExtractionPipeline:
         assert by_name["cortes de tubo"]["value"] == 1200000
         assert by_name["cortes de tubo"]["status"] == "warning"
         assert by_name["calentamiento del ánodo"]["status"] == "warning"
+
+
+class TestEquipmentChatPipeline:
+    """Mini-chat de revisión: extracción anclada al equipo + ingesta dirigida."""
+
+    CTX = {
+        "id": "eq-1",
+        "modality": "MR",
+        "manufacturer": None,
+        "model": None,
+        "age_years": None,
+        "state": "Desconocido",
+        "facility_id": "fac-1",
+        "facility_name": "Clínica Puerto Verde",
+        "city": "Colón",
+        "country": "Panamá",
+    }
+
+    def _client(self, payload: dict):
+        body = json.dumps(payload, ensure_ascii=False)
+        chunks = [
+            {"choices": [{"delta": {"role": "assistant", "content": body[:20]}}]},
+            {"choices": [{"delta": {"content": body[20:]}}]},
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            },
+        ]
+
+        def handler(request):
+            if request.url.path == "/v1/chat/completions":
+                return httpx.Response(
+                    200,
+                    content=_sse_body(*chunks),
+                    headers={"content-type": "text/event-stream"},
+                )
+            return httpx.Response(404)
+
+        return make_client(handler)
+
+    def _patch_ctx(self, monkeypatch):
+        async def fake_ctx(eid):
+            return self.CTX
+
+        monkeypatch.setattr("app.agent.service.engine.get_equipment_context", fake_ctx)
+
+    def test_llm_revision_updates_equipment(self, monkeypatch):
+        payload = {
+            "manufacturer": "Philips",
+            "model": None,
+            "age_years": 4,
+            "parameters": [
+                {"name": "corriente del tubo", "value": "10 mA", "unit": None, "status": "ok"},
+            ],
+            "note": "Anotado: fabricante Philips y corriente del tubo 10 mA.",
+            "followup": "¿Cuál es el modelo exacto del equipo?",
+        }
+        monkeypatch.setattr("app.agent.service._client", self._client(payload))
+        self._patch_ctx(monkeypatch)
+        captured = {}
+
+        async def fake_ingest(ext, equipment_id, contributor, client_type, full_name=None):
+            captured["ext"] = ext
+            captured["equipment_id"] = equipment_id
+            captured["contributor"] = contributor
+            return IngestResult(transaction_ids=[9])
+
+        monkeypatch.setattr(
+            "app.agent.service.engine.ingest_equipment_revision", fake_ingest
+        )
+
+        async def collect():
+            chunks = [
+                c
+                async for c in handle_equipment_chat(
+                    "El fabricante es Philips y la corriente del tubo es 10 mA nominal",
+                    "eq-1",
+                    {"username": "tec.maria", "full_name": "María Téc"},
+                    "field_app",
+                )
+            ]
+            return "".join(chunks)
+
+        events = _parse_sse(run(collect()))
+
+        token = next(e for e in events if e["type"] == "token")
+        assert token["text"] == "Anotado: fabricante Philips y corriente del tubo 10 mA."
+        extraction = next(e for e in events if e["type"] == "extraction")
+        assert extraction["data"]["extractor"] == "llm"
+        assert extraction["data"]["facility"] == "Clínica Puerto Verde"
+        item = extraction["data"]["items"][0]
+        assert item["manufacturer"] == "Philips"
+        assert item["age_years"] == 4
+        assert item["parameters"][0]["value"] == 10
+        assert item["parameters"][0]["unit"] == "mA"
+        followup = next(e for e in events if e["type"] == "followup")
+        assert "modelo" in followup["question"].lower()
+        assert events[-1]["type"] == "done"
+        assert events[-1]["transaction_id"] == 9
+
+        # La ingesta fue dirigida al equipo con el contribuyente autenticado.
+        assert captured["equipment_id"] == "eq-1"
+        assert captured["contributor"] == "tec.maria"
+        assert captured["ext"].raw.startswith("El fabricante es Philips")
+
+    def test_fallback_without_client_keeps_raw_observation(self, monkeypatch):
+        monkeypatch.setattr("app.agent.service._client", None)
+        self._patch_ctx(monkeypatch)
+        captured = {}
+
+        async def fake_ingest(ext, equipment_id, contributor, client_type, full_name=None):
+            captured["ext"] = ext
+            return IngestResult(transaction_ids=[])
+
+        monkeypatch.setattr(
+            "app.agent.service.engine.ingest_equipment_revision", fake_ingest
+        )
+
+        async def collect():
+            chunks = [
+                c
+                async for c in handle_equipment_chat(
+                    "La corriente del tubo es 10 mA nominal",
+                    "eq-1",
+                    {"username": "tec.maria", "full_name": None},
+                    "field_app",
+                )
+            ]
+            return "".join(chunks)
+
+        events = _parse_sse(run(collect()))
+        types = [e["type"] for e in events]
+        assert types[0] == "token"  # ack de fallback
+        extraction = next(e for e in events if e["type"] == "extraction")
+        assert extraction["data"]["extractor"] == "rule"
+        assert extraction["data"]["items"] == []
+        assert events[-1]["type"] == "done"
+        # Nada se inventa: la observación cruda se ancla al equipo.
+        assert captured["ext"].raw == "La corriente del tubo es 10 mA nominal"
+        assert captured["ext"].items == []
+
+    def test_unknown_equipment_emits_error(self, monkeypatch):
+        async def fake_ctx(eid):
+            return None
+
+        monkeypatch.setattr("app.agent.service.engine.get_equipment_context", fake_ctx)
+
+        async def collect():
+            chunks = [
+                c
+                async for c in handle_equipment_chat(
+                    "hola", "eq-nope", {"username": "tec.maria", "full_name": None}
+                )
+            ]
+            return "".join(chunks)
+
+        events = _parse_sse(run(collect()))
+        assert events[0]["type"] == "error"
+
+    def test_llm_string_nulls_are_normalized(self, monkeypatch):
+        # MedPsy en streaming emite la cadena "null" en lugar de JSON null;
+        # debe normalizarse para no romper EquipmentItem (age_years float).
+        payload = {
+            "manufacturer": "Philips",
+            "model": "null",
+            "age_years": "null",
+            "parameters": [],
+            "note": None,
+            "followup": None,
+        }
+        monkeypatch.setattr("app.agent.service._client", self._client(payload))
+        self._patch_ctx(monkeypatch)
+        captured = {}
+
+        async def fake_ingest(ext, equipment_id, contributor, client_type, full_name=None):
+            captured["ext"] = ext
+            return IngestResult(transaction_ids=[])
+
+        monkeypatch.setattr(
+            "app.agent.service.engine.ingest_equipment_revision", fake_ingest
+        )
+
+        async def collect():
+            return "".join(
+                [
+                    c
+                    async for c in handle_equipment_chat(
+                        "es Philips",
+                        "eq-1",
+                        {"username": "tec.maria", "full_name": None},
+                    )
+                ]
+            )
+
+        events = _parse_sse(run(collect()))
+        extraction = next(e for e in events if e["type"] == "extraction")
+        item = extraction["data"]["items"][0]
+        assert item["manufacturer"] == "Philips"
+        assert item["model"] is None
+        assert item["age_years"] is None
+        assert captured["ext"].followup is None

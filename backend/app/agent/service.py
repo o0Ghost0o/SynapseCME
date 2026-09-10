@@ -85,6 +85,52 @@ RAG_INSTRUCTIONS = (
     "but never invent equipment that does not appear in the message or in that context."
 )
 
+# Mini-chat de revisión (detalle de equipo): el mensaje se refiere a UN equipo
+# ya registrado; el prompt fija facilidad/modalidad para que la extracción no
+# invente otra unidad. El modelo contesta con JSON + nota de confirmación en
+# español (se muestra verbatim como burbuja del asistente).
+REVISION_SYSTEM_TEMPLATE = """You are the SynapseCME agent, an intelligence platform for \
+medical equipment installed in hospitals. A field engineer sends you a message in \
+Spanish with a REVISION of ONE specific equipment unit already registered:
+
+- Facility: {facility} ({city}, {country})
+- Equipment: {equipment}
+- Registered attributes: manufacturer={manufacturer}, model={model}, age_years={age}
+
+Extract structured updates and reply with ONLY a JSON object (no text outside \
+the JSON) with this exact shape:
+{{
+  "manufacturer": "manufacturer or null",
+  "model": "model or null",
+  "age_years": null,
+  "parameters": [
+    {{"name": "parameter name", "value": 0.0, "unit": "unit or null", "status": "ok|warning|critical|null"}}
+  ],
+  "note": "one short confirmation sentence in Spanish describing what was registered (identified brand, new parameters...), or null",
+  "followup": "short follow-up question in Spanish if a key datum is still missing, or null"
+}}
+
+The revision refers ONLY to the unit above; do not extract facilities, cities \
+or other equipment. Use null for fields the message does not mention; empty \
+parameters list is fine.
+
+parameters: when the message mentions technical magnitudes for this unit \
+(electric current, voltage, temperature, pressure, helium level, tube scan \
+count, dose rate, uptime hours...), extract one entry per magnitude. "value" \
+must be a number ("45%" -> 45 with unit "%"); use a string only if it is not \
+numeric. "name" in Spanish, short ("nivel de helio", "corriente del tubo", \
+"cortes de tubo", "tasa de dosis"). "status" is INFERRED, never copied from \
+the text: "nominal, correcto, dentro de rango, normal, estable" -> ok; \
+"alto, bajo, inestable, fluctuante, desgastado" -> warning; "fuera de rango, \
+falla, crítico, sobrecarga" -> critical; if it cannot be inferred, use null.
+
+Do not add anything after the JSON."""
+
+REVISION_FALLBACK_ACK = (
+    "Entendido. Guardé tu revisión en el historial del equipo "
+    "(el nodo de inferencia no respondió, así que no pude extraer estructura)."
+)
+
 # Conversación titles (Fase 4): one short non-streaming call after the first
 # exchange. English-only model; the title itself must be Spanish.
 TITLE_SYSTEM_PROMPT = (
@@ -534,6 +580,171 @@ async def _handle_question(
 
     if conversation_id is not None:
         _schedule_title(client, conversation_id, request.message, emitted_text)
+
+
+def _clean_llm_null(value: Any) -> Any:
+    """MedPsy (modo streaming) emite la cadena \"null\" en lugar de JSON null."""
+    if isinstance(value, str) and value.strip().lower() in ("null", "none", ""):
+        return None
+    return value
+
+
+def _revision_from_llm(
+    data: dict[str, Any] | None, raw: str, ctx: dict[str, Any]
+) -> tuple[ExtractionResult, str] | None:
+    """JSON del LLM -> (ExtractionResult anclada al equipo, nota en español)."""
+    if not isinstance(data, dict):
+        return None
+    try:
+        item = EquipmentItem(
+            modality=str(ctx.get("modality") or "OT").upper()[:2],
+            manufacturer=_clean_llm_null(data.get("manufacturer")),
+            model=_clean_llm_null(data.get("model")),
+            quantity=1,
+            age_years=_clean_llm_null(data.get("age_years")),
+            confidence=0.7,
+            parameters=_parse_parameters(data.get("parameters")),
+        )
+    except (TypeError, ValueError):
+        return None
+    ext = ExtractionResult(
+        facility=ctx.get("facility_name"),
+        city=ctx.get("city"),
+        country=ctx.get("country"),
+        items=[item],
+        confidence=0.75,
+        raw=raw,
+        extractor="llm",
+    )
+    ext.followup = data.get("followup")
+    note = data.get("note")
+    return ext, str(note).strip() if note else ""
+
+
+async def handle_equipment_chat(
+    message: str,
+    equipment_id: str,
+    user: dict[str, Any],
+    client_type: str | None = None,
+) -> AsyncIterator[str]:
+    """SSE stream del mini-chat de revisión anclado a un equipo.
+
+    Mismo contrato que /api/chat (token/extraction/followup/done) pero la
+    extracción se puntea con el contexto del equipo y la ingesta va a
+    ``engine.ingest_equipment_revision`` (sin detección de duplicados).
+    """
+    request_id = uuid.uuid4().hex[:12]
+    contributor = user["username"]
+    full_name = user.get("full_name")
+    started = time.perf_counter()
+    ttft_ms: int | None = None
+    usage: dict[str, Any] | None = None
+    full_text = ""
+    emitted_text = ""
+    ctx = await engine.get_equipment_context(equipment_id)
+    if ctx is None:
+        yield _sse({"type": "error", "detail": "Equipo no encontrado"})
+        return
+
+    client = _client
+    ext: ExtractionResult | None = None
+    used_fallback = client is None
+    if client is not None:
+        equipment_label = " ".join(
+            str(p) for p in (ctx.get("modality"), ctx.get("manufacturer"), ctx.get("model")) if p
+        ) or "unidad sin identificar"
+        system_prompt = REVISION_SYSTEM_TEMPLATE.format(
+            facility=ctx.get("facility_name") or "desconocida",
+            city=ctx.get("city") or "desconocida",
+            country=ctx.get("country") or "desconocido",
+            equipment=equipment_label,
+            manufacturer=ctx.get("manufacturer") or "null",
+            model=ctx.get("model") or "null",
+            age=ctx.get("age_years") if ctx.get("age_years") is not None else "null",
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message},
+        ]
+        try:
+            async for event in client.stream_chat(messages):
+                now_ms = int((time.perf_counter() - started) * 1000)
+                if event.get("done"):
+                    usage = event.get("usage")
+                    continue
+                token = event.get("token", "")
+                if ttft_ms is None:
+                    ttft_ms = now_ms
+                full_text += token
+        except QvacError as exc:
+            logger.warning("Revisión con extractor local: %s", exc)
+            used_fallback = True
+
+        if not used_fallback:
+            parsed = _revision_from_llm(parse_llm_json(full_text), message, ctx)
+            if parsed is None:
+                logger.warning("La revisión del modelo no trajo JSON válido; se guarda como observación")
+                used_fallback = True
+                if full_text.strip():
+                    # Texto libre (no JSON): sí es contenido para el usuario.
+                    emitted_text = full_text
+                    yield _sse({"type": "token", "text": full_text})
+            else:
+                ext, note = parsed
+                if note:
+                    emitted_text = note
+                    yield _sse({"type": "token", "text": note})
+
+    if used_fallback or ext is None:
+        # Observación cruda anclada al equipo: nada se inventa.
+        ext = ExtractionResult(
+            facility=ctx.get("facility_name"),
+            city=ctx.get("city"),
+            country=ctx.get("country"),
+            items=[],
+            confidence=0.5,
+            raw=message,
+            extractor="rule",
+        )
+        if used_fallback and not emitted_text:
+            emitted_text = REVISION_FALLBACK_ACK
+            yield _sse({"type": "token", "text": emitted_text})
+
+    yield _sse({"type": "extraction", "data": ext.model_dump()})
+
+    transaction_ids: list[int] = []
+    try:
+        ingest = await engine.ingest_equipment_revision(
+            ext, equipment_id, contributor, client_type, full_name=full_name
+        )
+        transaction_ids = ingest.transaction_ids
+    except Exception as exc:  # noqa: BLE001 - ingestion must not kill the stream
+        logger.exception("Error al ingerir la revisión en el grafo: %s", exc)
+
+    if ext.followup:
+        yield _sse({"type": "followup", "question": ext.followup})
+
+    total_ms = int((time.perf_counter() - started) * 1000)
+    metrics = build_metrics(
+        model=client.model if client else "rule-fallback",
+        ttft_ms=ttft_ms if ttft_ms is not None else total_ms,
+        total_ms=total_ms,
+        prompt_text=message,
+        generated_text=full_text,
+        usage=usage,
+        cold_start=False,
+    )
+    try:
+        await db.log_perf(request_id, metrics)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo guardar perf_log: %s", exc)
+
+    yield _sse(
+        {
+            "type": "done",
+            "transaction_id": transaction_ids[0] if transaction_ids else request_id,
+        }
+    )
 
 
 def record_inference(request_id: str, metrics: InferenceMetrics) -> None:

@@ -206,3 +206,69 @@ class TestEquipmentList:
 
         monkeypatch.setattr(engine, "list_equipments", fake_list)
         assert client_as("viewer").get("/api/equipments").status_code == 200
+
+
+class TestEquipmentChat:
+    """Mini-chat de revisión anclado al equipo (SSE, contrato como /api/chat)."""
+
+    CTX = {
+        "id": "eq-1",
+        "modality": "MR",
+        "manufacturer": None,
+        "model": None,
+        "age_years": None,
+        "state": "Desconocido",
+        "facility_id": "fac-1",
+        "facility_name": "Clínica Puerto Verde",
+        "city": "Colón",
+        "country": "Panamá",
+    }
+
+    def test_chat_not_found(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+
+        async def fake_ctx(eid):
+            return None
+
+        monkeypatch.setattr(engine, "get_equipment_context", fake_ctx)
+        r = client_as("capturer").post(
+            "/api/equipment/eq-nope/chat", json={"message": "El fabricante es Philips"}
+        )
+        assert r.status_code == 404
+
+    def test_chat_streams_sse(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+
+        async def fake_ctx(eid):
+            return self.CTX
+
+        monkeypatch.setattr(engine, "get_equipment_context", fake_ctx)
+
+        async def fake_stream(message, equipment_id, user, client_type=None):
+            assert message == "El fabricante es Philips"
+            assert equipment_id == "eq-1"
+            yield 'data: {"type": "token", "text": "Listo"}\n\n'
+            yield 'data: {"type": "done", "transaction_id": 5}\n\n'
+
+        monkeypatch.setattr("app.api.equipment.service.handle_equipment_chat", fake_stream)
+        r = client_as("capturer").post(
+            "/api/equipment/eq-1/chat", json={"message": "El fabricante es Philips"}
+        )
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/event-stream")
+        assert '"type": "done"' in r.text
+
+    def test_chat_graph_down_503(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: None)
+        r = client_as("capturer").post("/api/equipment/eq-1/chat", json={"message": "x"})
+        assert r.status_code == 503
+
+    def test_chat_viewer_forbidden(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+        r = client_as("viewer").post("/api/equipment/eq-1/chat", json={"message": "x"})
+        assert r.status_code == 403
+
+    def test_chat_requires_auth(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+        r = TestClient(app).post("/api/equipment/eq-1/chat", json={"message": "x"})
+        assert r.status_code == 401

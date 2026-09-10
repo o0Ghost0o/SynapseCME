@@ -443,6 +443,190 @@ async def _emit_tx(entry: dict[str, Any] | None, summary: str) -> None:
         await bus.broadcast({"type": "tx", "entry": entry})
 
 
+async def get_equipment_context(equipment_id: str) -> dict[str, Any] | None:
+    """Equipo + su facilidad/ciudad/país, para anclar el chat de revisión."""
+    if _driver is None:
+        return None
+    async with _driver.session() as session:
+        result = await session.run(
+            "MATCH (f:Facility)-[:HAS]->(e:Equipment {id: $eid}) "
+            "OPTIONAL MATCH (f)<-[:HAS]-(ci:City)<-[:HAS]-(co:Country) "
+            "RETURN e.id AS id, e.modality AS modality, e.manufacturer AS manufacturer, "
+            "       e.model AS model, e.age_years AS age_years, e.state AS state, "
+            "       f.id AS facility_id, f.name AS facility_name, "
+            "       ci.name AS city, co.name AS country LIMIT 1",
+            {"eid": equipment_id},
+        )
+        row = await result.single()
+        return dict(row) if row else None
+
+
+async def _merge_equipment_revision(
+    tx: Any,
+    *,
+    equipment_id: str,
+    obs_id: str,
+    contributor: str,
+    modality: str | None,
+    manufacturer: str | None,
+    model: str | None,
+    quantity: int | None,
+    age_years: float | None,
+    confidence: float,
+    text: str,
+    par_list: list[dict[str, Any]],
+) -> dict[str, Any]:
+    result = await tx.run(
+        "MATCH (e:Equipment {id: $eid}) "
+        "SET e.manufacturer = coalesce($manufacturer, e.manufacturer), "
+        "    e.model = coalesce($model, e.model), "
+        "    e.age_years = coalesce($age_years, e.age_years), "
+        "    e.quantity = coalesce($quantity, e.quantity, 1), "
+        "    e.modality = coalesce(e.modality, $modality) "
+        "MERGE (c:Contributor {name: $contributor}) "
+        "CREATE (o:Observation {id: $oid, text: $text, confidence: $confidence, "
+        "                       created_at: datetime()}) "
+        "MERGE (o)-[:OBSERVED]->(e) "
+        "MERGE (o)-[:MADE_BY]->(c) "
+        "FOREACH (p IN $par_list | "
+        "  MERGE (par:Parameter {source_observation_id: $oid, name: p.name}) "
+        "  ON CREATE SET par.id = p.id, par.value = p.value, par.unit = p.unit, "
+        "                par.status = p.status, par.created_at = datetime() "
+        "  MERGE (par)-[:MEASURED_ON]->(e)) "
+        "RETURN e.state AS state",
+        eid=equipment_id,
+        oid=obs_id,
+        contributor=contributor,
+        modality=modality,
+        manufacturer=manufacturer,
+        model=model,
+        quantity=quantity,
+        age_years=age_years,
+        confidence=confidence,
+        text=text,
+        par_list=par_list,
+    )
+    record = await result.single()
+    return dict(record) if record else {}
+
+
+async def ingest_equipment_revision(
+    ext: ExtractionResult,
+    equipment_id: str,
+    contributor: str,
+    client_type: str | None,
+    full_name: str | None = None,
+) -> IngestResult:
+    """Ancla una revisión al equipo indicado (chat de detalle).
+
+    A diferencia de ``ingest_extraction`` no hay detección de duplicados ni
+    MERGE de jerarquía: la observación se cuelga del equipo ya registrado, se
+    rellenan sus atributos aún vacíos (coalesce) y sus parámetros nuevos.
+    """
+    result = IngestResult()
+    if _driver is None:
+        return result
+    async with _driver.session() as session:
+        ctx = await get_equipment_context(equipment_id)
+        if ctx is None:
+            logger.info("Revisión para equipo inexistente %s; nada que ingerir", equipment_id)
+            return result
+        result.facility_id = ctx["facility_id"]
+        item = ext.items[0] if ext.items else None
+        parameters = [
+            {
+                "id": _new_id("par"),
+                "name": p.name,
+                "value": p.value,
+                "unit": p.unit,
+                "status": p.status,
+            }
+            for it in ext.items
+            for p in it.parameters
+            if p.name
+        ]
+        confidence = item.confidence if item else 0.5
+        obs_id = _new_id("obs")
+        tx = await session.execute_write(
+            _merge_equipment_revision,
+            equipment_id=equipment_id,
+            obs_id=obs_id,
+            contributor=contributor,
+            modality=(item.modality if item else None) or ctx.get("modality"),
+            manufacturer=item.manufacturer if item else None,
+            model=item.model if item else None,
+            quantity=item.quantity if item else None,
+            age_years=item.age_years if item else None,
+            confidence=confidence,
+            text=ext.raw or "",
+            par_list=parameters,
+        )
+        result.equipment_ids.append(equipment_id)
+
+        # Consenso de estado con la observación nueva incluida.
+        votes_rows = await session.run(
+            "MATCH (o:Observation)-[:OBSERVED]->(e:Equipment {id: $eid}) "
+            "OPTIONAL MATCH (o)-[:MADE_BY]->(c:Contributor) "
+            "RETURN coalesce(c.name, 'anon') AS contributor, o.confidence AS confidence",
+            {"eid": equipment_id},
+        )
+        rows = [dict(r) async for r in votes_rows]
+        n_contributors = len({r["contributor"] for r in rows})
+        new_state, _, _ = consensus(_expand_votes(rows))
+        old_state = parse_state(tx.get("state"))
+        transition = state_transition(old_state, new_state)
+        if transition:
+            await session.run(
+                "MATCH (e:Equipment {id: $eid}) SET e.state = $state",
+                {"eid": equipment_id, "state": new_state.value},
+            )
+            await db.log_state_transition(
+                equipment_id, "exists", old_state.value, new_state.value,
+                confidence, obs_id,
+            )
+
+        updated: list[str] = []
+        if item is not None:
+            if item.manufacturer:
+                updated.append(f"fabricante {item.manufacturer}")
+            if item.model:
+                updated.append(f"modelo {item.model}")
+            if item.age_years is not None:
+                updated.append(f"antigüedad {item.age_years} años")
+        if parameters:
+            updated.append(f"{len(parameters)} parámetro(s)")
+        label = f"{ctx.get('modality') or 'Equipo'} {item.manufacturer if item else ''}".strip()
+        summary = f"Revisión de {label} en {ctx['facility_name']}"
+        if updated:
+            summary += ": " + ", ".join(updated)
+        elif transition:
+            summary += f": {transition} ({n_contributors} contribuyentes)"
+        result.mutation_summary = summary
+
+        entry = await db.log_transaction(
+            actor=contributor,
+            client_type=client_type,
+            action="merge",
+            target_type="Equipment",
+            target_id=equipment_id,
+            target_name=f"{ctx['facility_name']} · {label}",
+            state_transition=transition,
+            payload={
+                "facility_id": ctx["facility_id"],
+                "manufacturer": item.manufacturer if item else None,
+                "model": item.model if item else None,
+                "age_years": item.age_years if item else None,
+                "parameters": [p["name"] for p in parameters],
+                "confidence": confidence,
+                "full_name": full_name,
+            },
+        )
+        if entry is not None:
+            result.transaction_ids.append(entry["id"])
+        await _emit_tx(entry, summary)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Reads
 # ---------------------------------------------------------------------------
