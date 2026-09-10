@@ -380,6 +380,18 @@ async def _merge_equipment_and_observation(
 ) -> dict[str, Any]:
     # The caller pre-resolves the equipment id (duplicate detection); create
     # the node only when nothing exists under that id yet.
+    # Parameters merge idempotently per (source_observation_id, name).
+    parameters = [
+        {
+            "id": _new_id("par"),
+            "name": p["name"],
+            "value": p.get("value"),
+            "unit": p.get("unit"),
+            "status": p.get("status"),
+        }
+        for p in (item.get("parameters") or [])
+        if p.get("name")
+    ]
     result = await tx.run(
         "MATCH (f:Facility {id: $fid}) "
         "OPTIONAL MATCH (existing:Equipment {id: $eid}) "
@@ -400,6 +412,11 @@ async def _merge_equipment_and_observation(
         "                       created_at: datetime()}) "
         "MERGE (o)-[:OBSERVED]->(e) "
         "MERGE (o)-[:MADE_BY]->(c) "
+        "FOREACH (p IN $parameters | "
+        "  MERGE (par:Parameter {source_observation_id: $oid, name: p.name}) "
+        "  ON CREATE SET par.id = p.id, par.value = p.value, par.unit = p.unit, "
+        "                par.status = p.status, par.created_at = datetime() "
+        "  MERGE (par)-[:MEASURED_ON]->(e)) "
         "RETURN e.id AS equipment_id, e.state AS state, "
         "       (existing IS NULL) AS created",
         fid=facility_id,
@@ -414,6 +431,7 @@ async def _merge_equipment_and_observation(
         oid=obs_id,
         text=text,
         confidence=confidence,
+        parameters=parameters,
     )
     record = await result.single()
     return dict(record) if record else {"equipment_id": equipment_id, "created": True}
@@ -549,3 +567,139 @@ async def get_network(limit: int = NETWORK_NODE_LIMIT) -> dict[str, Any]:
             async for r in result
         ]
         return {"nodes": nodes, "links": links}
+
+
+def _row_to_parameter(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "value": row["value"],
+        "unit": row["unit"],
+        "status": row["status"],
+        "source_observation_id": row["source_observation_id"],
+        "created_at": row["created_at"],
+    }
+
+
+async def get_equipment_detail(equipment_id: str) -> dict[str, Any] | None:
+    """Equipo + observaciones + parámetros (último por nombre + historial)."""
+    if _driver is None:
+        return None
+    async with _driver.session() as session:
+        result = await session.run(
+            "MATCH (e:Equipment {id: $eid}) "
+            "OPTIONAL MATCH (f:Facility)-[:HAS]->(e) "
+            "OPTIONAL MATCH (f)<-[:HAS]-(ci:City)<-[:HAS]-(co:Country) "
+            "RETURN e.id AS id, e.modality AS modality, e.manufacturer AS manufacturer, "
+            "       e.model AS model, e.quantity AS quantity, e.age_years AS age_years, "
+            "       e.state AS state, f.id AS facility_id, f.name AS facility_name, "
+            "       ci.name AS city, co.name AS country LIMIT 1",
+            {"eid": equipment_id},
+        )
+        row = await result.single()
+        if row is None:
+            return None
+        equipment = dict(row)
+
+        result = await session.run(
+            "MATCH (e:Equipment {id: $eid}) "
+            "OPTIONAL MATCH (o:Observation)-[:OBSERVED]->(e) "
+            "OPTIONAL MATCH (o)-[:MADE_BY]->(c:Contributor) "
+            "RETURN o.id AS id, c.name AS contributor, o.text AS text, "
+            "       o.confidence AS confidence, toString(o.created_at) AS created_at "
+            "ORDER BY o.created_at DESC",
+            {"eid": equipment_id},
+        )
+        observations = [dict(r) async for r in result if r["id"]]
+
+        result = await session.run(
+            "MATCH (p:Parameter)-[:MEASURED_ON]->(:Equipment {id: $eid}) "
+            "RETURN p.id AS id, p.name AS name, p.value AS value, p.unit AS unit, "
+            "       p.status AS status, p.source_observation_id AS source_observation_id, "
+            "       toString(p.created_at) AS created_at "
+            "ORDER BY p.created_at DESC",
+            {"eid": equipment_id},
+        )
+        history = [_row_to_parameter(dict(r)) async for r in result]
+
+    # Último valor por nombre (el historial ya viene ordenado desc).
+    latest: dict[str, dict[str, Any]] = {}
+    for p in history:
+        latest.setdefault(p["name"], p)
+    return {
+        "equipment": equipment,
+        "observations": observations,
+        "parameters": list(latest.values()),
+        "parameter_history": history,
+    }
+
+
+_EQUIPMENT_FILTERS = (
+    "($modality IS NULL OR e.modality = $modality) "
+    "AND ($manufacturer IS NULL OR toLower(coalesce(e.manufacturer, '')) "
+    "     CONTAINS toLower($manufacturer)) "
+    "AND ($state IS NULL OR e.state = $state) "
+    "AND ($country IS NULL OR co.name = $country) "
+    "AND ($facility IS NULL OR f.id = $facility "
+    "     OR toLower(f.name) CONTAINS toLower($facility)) "
+    "AND ($q IS NULL OR toLower(coalesce(e.manufacturer, '') + ' ' + "
+    "     coalesce(e.model, '')) CONTAINS toLower($q)) "
+    "AND (NOT $has_issue OR EXISTS { "
+    "      MATCH (pi:Parameter)-[:MEASURED_ON]->(e) "
+    "      WHERE pi.status IN ['warning', 'critical'] }) "
+)
+
+_EQUIPMENT_MATCH = (
+    "MATCH (f:Facility)-[:HAS]->(e:Equipment) "
+    "OPTIONAL MATCH (f)<-[:HAS]-(ci:City)<-[:HAS]-(co:Country) "
+    f"WHERE {_EQUIPMENT_FILTERS}"
+)
+
+
+async def list_equipments(
+    modality: str | None = None,
+    manufacturer: str | None = None,
+    state: str | None = None,
+    country: str | None = None,
+    facility: str | None = None,
+    q: str | None = None,
+    has_issue: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Lista plana de equipos con filtros parametrizados y paginación."""
+    if _driver is None:
+        return {"total": 0, "items": [], "limit": limit, "offset": offset}
+    params = {
+        "modality": modality or None,
+        "manufacturer": manufacturer or None,
+        "state": state or None,
+        "country": country or None,
+        "facility": facility or None,
+        "q": q or None,
+        "has_issue": has_issue,
+        "limit": max(min(limit, 500), 1),
+        "offset": max(offset, 0),
+    }
+    async with _driver.session() as session:
+        result = await session.run(
+            f"{_EQUIPMENT_MATCH} RETURN count(DISTINCT e) AS total",
+            params,
+        )
+        row = await result.single()
+        total = int(row["total"]) if row else 0
+
+        result = await session.run(
+            f"{_EQUIPMENT_MATCH} "
+            "RETURN e.id AS id, e.modality AS modality, e.manufacturer AS manufacturer, "
+            "       e.model AS model, e.quantity AS quantity, e.age_years AS age_years, "
+            "       e.state AS state, f.id AS facility_id, f.name AS facility_name, "
+            "       ci.name AS city, co.name AS country, "
+            "       EXISTS { MATCH (pi:Parameter)-[:MEASURED_ON]->(e) "
+            "                WHERE pi.status IN ['warning', 'critical'] } AS has_issue "
+            "ORDER BY f.name, e.id "
+            "SKIP $offset LIMIT $limit",
+            params,
+        )
+        items = [dict(r) async for r in result]
+    return {"total": total, "items": items, "limit": params["limit"], "offset": params["offset"]}

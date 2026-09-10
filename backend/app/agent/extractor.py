@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from app.models import EquipmentItem, ExtractionResult
+from app.models import EquipmentItem, ExtractionResult, ParameterExtraction
 
 # modality keyword -> canonical code
 MODALITY_KEYWORDS: list[tuple[str, str]] = [
@@ -79,6 +79,49 @@ CITY_COUNTRY: dict[str, str] = {
 
 # High-value modalities that justify a follow-up when manufacturer is unknown.
 HIGH_VALUE_MODALITIES = {"MR", "CT"}
+
+# --- Technical parameters --------------------------------------------------
+# Keyword -> canonical parameter name. Status is INFERRED from nearby words
+# (see PARAM_STATUS_KEYWORDS), never copied from the text.
+PARAM_KEYWORDS: list[tuple[str, str]] = [
+    (r"\bhelio\b", "nivel de helio"),
+    (r"\bcorriente\w*", "corriente"),
+    (r"\bvoltaje\b|\btensi[oó]n\b", "voltaje"),
+    (r"\btemperatura\w*", "temperatura"),
+    (r"\bpresi[oó]n\w*", "presión"),
+    (r"\bcortes?\b", "cortes de tubo"),
+    (r"\btasa\s+de\s+dosis\b", "tasa de dosis"),
+    (r"\bcalentamiento\s+del\s+[aá]nodo\b", "calentamiento del ánodo"),
+    (r"\bnivel\s+de\s+ruido\b", "nivel de ruido"),
+]
+
+# Priority order matters: the first table that matches wins.
+PARAM_STATUS_KEYWORDS: list[tuple[str, str]] = [
+    (r"fuera\s+de\s+rango|sobrecarg\w+|cr[ií]tic\w+|falla\w*|no\s+funciona|roto\w*",
+     "critical"),
+    (r"\balto\w*|\bbajo\w*|inestable|fluctuante\w*|intermitente|desgastad\w*|"
+     r"al\s+l[ií]mite", "warning"),
+    (r"nominal|correcto\w*|dentro\s+de\s+(?:su\s+)?rango|estable|sin\s+desviaciones?|"
+     r"normal\b|[oó]ptimo\w*", "ok"),
+]
+
+# Número + unidad técnica. "millones de" escala el valor (cortes de tubo).
+# Las unidades de una letra van sin IGNORECASE para no capturar el artículo "a".
+NUMBER_VALUE_RE = re.compile(
+    r"(?<![\d-])(\d+(?:[.,]\d+)?)\s*(?i:(millones?\s+de\s+))?"
+)
+UNIT_VALUE_RE = re.compile(
+    r"(%|mA|µA|kV|MV|kW|MW|MU/min|[WVAL]|°C|ºC|bar|psi|horas?|cortes?)(?![\w%])"
+)
+# Magnitud que PRECEDE al keyword ("con 1.2 millones de cortes"): número con
+# escala y/o unidad pegado al final de la ventana previa.
+BACKWARD_VALUE_RE = re.compile(
+    r"(?<![\d-])(\d+(?:[.,]\d+)?)\s*(?i:(millones?\s+de\s+)?)"
+    r"(%|mA|µA|kV|MV|kW|MW|MU/min|[WVAL]|°C|ºC|bar|psi|horas?|cortes?)?\s*$"
+)
+
+# Ventana (caracteres tras el keyword) donde se buscan valor y estado.
+PARAMETER_WINDOW = 80
 
 FACILITY_RE = re.compile(
     r"\b(Hospital|Clínica|Clinica|Centro\s+Médico|Centro\s+Medico|"
@@ -210,6 +253,79 @@ def _detect_manufacturer(text: str) -> str | None:
     return None
 
 
+def _parameter_target(
+    window: str, items: list[EquipmentItem]
+) -> EquipmentItem | None:
+    """Item al que se refiere la ventana: el de cuya modalidad se habla ahí."""
+    lowered = window.lower()
+    for item in items:
+        for pattern, code in MODALITY_KEYWORDS:
+            if code == item.modality and re.search(pattern, lowered):
+                return item
+    return items[0] if items else None
+
+
+def _extract_magnitude(
+    sentence: str, keyword: re.Match[str]
+) -> tuple[float | int | None, str | None]:
+    """Número con unidad (o con 'millones de') tras el keyword; si no, antes."""
+    forward = sentence[keyword.start() : keyword.start() + PARAMETER_WINDOW]
+    for match in NUMBER_VALUE_RE.finditer(forward):
+        scale = match.group(2)
+        unit_match = UNIT_VALUE_RE.match(forward, match.end())
+        if not scale and not unit_match:
+            continue
+        unit = unit_match.group(1) if unit_match else None
+        value = float(match.group(1).replace(",", "."))
+        if scale:
+            value = round(value * 1_000_000, 6)
+            unit = unit or "cortes"
+        return (int(value) if value.is_integer() else value), unit
+    backward = sentence[max(0, keyword.start() - 40) : keyword.start()]
+    match = BACKWARD_VALUE_RE.search(backward)
+    if match and (match.group(2) or match.group(3)):
+        value = float(match.group(1).replace(",", "."))
+        unit = match.group(3)
+        if match.group(2):
+            value = round(value * 1_000_000, 6)
+            unit = unit or "cortes"
+        return (int(value) if value.is_integer() else value), unit
+    return None, None
+
+
+def _infer_parameter_status(window: str) -> str | None:
+    lowered = window.lower()
+    for pattern, status in PARAM_STATUS_KEYWORDS:
+        if re.search(pattern, lowered):
+            return status
+    return None
+
+
+def _detect_parameters(message: str, items: list[EquipmentItem]) -> None:
+    """Attach ParameterExtraction entries to items from technical magnitudes."""
+    if not items:
+        return
+    for sentence in re.split(r"[.!?]\s+", message):
+        for pattern, name in PARAM_KEYWORDS:
+            keyword = re.search(pattern, sentence, re.IGNORECASE)
+            if keyword is None:
+                continue
+            start = max(0, keyword.start() - 25)
+            window = sentence[start : keyword.start() + PARAMETER_WINDOW]
+            target = _parameter_target(window, items)
+            if target is None or any(p.name == name for p in target.parameters):
+                continue
+            value, unit = _extract_magnitude(sentence, keyword)
+            target.parameters.append(
+                ParameterExtraction(
+                    name=name,
+                    value=value,
+                    unit=unit,
+                    status=_infer_parameter_status(window),
+                )
+            )
+
+
 def build_followup(ext: ExtractionResult) -> str | None:
     """Targeted follow-up question for missing high-value fields (Spanish)."""
     high_value = [i for i in ext.items if i.modality in HIGH_VALUE_MODALITIES]
@@ -249,6 +365,7 @@ def extract(message: str) -> ExtractionResult:
                 confidence=0.6 if quantities.get(code) else 0.45,
             )
         )
+    _detect_parameters(message, items)
 
     missing: list[str] = []
     if not facility:

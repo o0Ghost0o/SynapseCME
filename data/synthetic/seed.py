@@ -64,10 +64,11 @@ class SeedObservation:
 
 
 # ---------------------------------------------------------------------------
-# Dataset: 2 regions, 4 countries, 8 fictional facilities, 40 observations.
+# Dataset: 2 regions, 4 countries, 8 fictional facilities, 44 observations.
 # Deliberate duplicates across contributors drive consensus promotion
 # (Estimado -> Reportado -> Confirmado) and conflicting manufacturer/age
-# reports on the same unit.
+# reports on the same unit. The last four observations carry technical
+# parameters (good and bad) to exercise the Parameter pipeline.
 # ---------------------------------------------------------------------------
 
 DATASET: list[SeedObservation] = [
@@ -247,6 +248,29 @@ DATASET: list[SeedObservation] = [
     SeedObservation(
         "Hay una fluoroscopia en el Centro Médico Ría Alta en A Coruña, España",
         "Jorge Iriarte",
+    ),
+    # --- Observaciones con parámetros técnicos (buenos y malos) -------------
+    SeedObservation(
+        "En el Hospital Aurora en Ciudad de Panamá, Panamá, la resonancia "
+        "magnética Siemens tiene el nivel de helio bajo al 45% (rango nominal "
+        "60-100%) y la presión de criógeno normal",
+        "Marina Solís",
+    ),
+    SeedObservation(
+        "El tomógrafo GE del Hospital Aurora en Panamá tiene el tubo con "
+        "1.2 millones de cortes, el calentamiento del ánodo está alto",
+        "Jorge Iriarte",
+    ),
+    SeedObservation(
+        "En el Hospital Aurora en Panamá la fluoroscopia Siemens tiene la "
+        "corriente del tubo fuera de rango a 15 mA (nominal 5-10 mA)",
+        "Camila Duarte",
+    ),
+    SeedObservation(
+        "En el Centro Médico Bahía en San José, Costa Rica, la resonancia "
+        "Siemens tiene el nivel de helio nominal al 98% y la presión de "
+        "criógeno correcta",
+        "Marina Solís",
     ),
 ]
 

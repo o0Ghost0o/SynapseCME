@@ -7,6 +7,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+ParameterStatus = Literal["ok", "warning", "critical"]
+
+
+class ParameterExtraction(BaseModel):
+    name: str
+    value: float | str | None = None
+    unit: str | None = None
+    status: ParameterStatus | None = None
+
+
 class EquipmentItem(BaseModel):
     modality: str
     manufacturer: str | None = None
@@ -14,6 +24,7 @@ class EquipmentItem(BaseModel):
     quantity: int = 1
     age_years: float | None = None
     confidence: float = 0.5
+    parameters: list[ParameterExtraction] = Field(default_factory=list)
 
 
 class ExtractionResult(BaseModel):
@@ -83,6 +94,45 @@ class MetricsResponse(BaseModel):
 class FacilityDetail(BaseModel):
     facility: dict[str, Any]
     equipment: list[dict[str, Any]]
+
+
+class Parameter(BaseModel):
+    id: str
+    name: str
+    value: float | str | None = None
+    unit: str | None = None
+    status: ParameterStatus | None = None
+    source_observation_id: str
+    created_at: str | None = None
+
+
+class EquipmentDetail(BaseModel):
+    equipment: dict[str, Any]
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+    parameters: list[Parameter] = Field(default_factory=list)
+    parameter_history: list[Parameter] = Field(default_factory=list)
+
+
+class EquipmentListItem(BaseModel):
+    id: str
+    modality: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    quantity: int | None = None
+    age_years: float | None = None
+    state: str | None = None
+    facility_id: str | None = None
+    facility_name: str | None = None
+    city: str | None = None
+    country: str | None = None
+    has_issue: bool = False
+
+
+class EquipmentListResponse(BaseModel):
+    total: int
+    items: list[EquipmentListItem] = Field(default_factory=list)
+    limit: int = 100
+    offset: int = 0
 
 
 class HierarchyResponse(BaseModel):

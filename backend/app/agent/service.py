@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Any, AsyncIterator
@@ -19,7 +20,7 @@ from app.agent.qvac import QvacClient, QvacError
 from app.core.config import Settings, settings
 from app.core.metrics import InferenceMetrics, build_metrics
 from app.graph import engine
-from app.models import ChatRequest, EquipmentItem, ExtractionResult
+from app.models import ChatRequest, EquipmentItem, ExtractionResult, ParameterExtraction
 from app.sync import service as sync_service
 
 logger = logging.getLogger("synapse.agent")
@@ -46,7 +47,10 @@ JSON) with this exact shape:
       "model": "model or null",
       "quantity": 1,
       "age_years": null,
-      "confidence": 0.0
+      "confidence": 0.0,
+      "parameters": [
+        {"name": "parameter name", "value": 0.0, "unit": "unit or null", "status": "ok|warning|critical|null"}
+      ]
     }
   ],
   "followup": "short follow-up question in Spanish if a key datum is missing (MR/CT manufacturer), or null"
@@ -55,6 +59,16 @@ JSON) with this exact shape:
 Modality codes: resonancia magnética/MRI=MR, tomógrafo/CT scanner=CT, rayos X/X-ray=XR, \
 ultrasonido/ultrasound=UL, mamografía/mammography=MG, fluoroscopia/C-arm=RF. Use null for \
 unknown fields. confidence between 0 and 1 reflecting how clear the datum is.
+
+parameters: when an observation mentions technical magnitudes for an equipment unit \
+(electric current, voltage, temperature, pressure, helium level, tube scan count, dose \
+rate, uptime hours...), extract one entry per magnitude. "value" must be a number \
+("45%" -> 45 with unit "%"); use a string only if it is not numeric. "name" in Spanish, \
+short ("nivel de helio", "corriente del tubo", "cortes de tubo", "tasa de dosis"). \
+"status" is INFERRED, never copied from the text: "nominal, correcto, dentro de rango, \
+normal, estable" -> ok; "alto, bajo, inestable, fluctuante, desgastado" -> warning; \
+"fuera de rango, falla, crítico, sobrecarga" -> critical; if it cannot be inferred, \
+use null. Only include parameters actually mentioned; an empty list is fine.
 
 Do not add anything after the JSON."""
 
@@ -126,6 +140,42 @@ def parse_llm_json(text: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+_VALID_STATUSES = ("ok", "warning", "critical")
+
+
+def _coerce_parameter_value(value: Any) -> tuple[float | str | None, str | None]:
+    """Normalise an LLM-supplied value: "45%" -> (45, "%"), strings stay text."""
+    if value is None or isinstance(value, (int, float)):
+        return value, None
+    text = str(value).strip()
+    match = re.fullmatch(r"(-?\d+(?:[.,]\d+)?)\s*(%|[a-zA-Zµ°/]+)?", text)
+    if match:
+        number = float(match.group(1).replace(",", "."))
+        return (int(number) if number.is_integer() else number), match.group(2)
+    return text or None, None
+
+
+def _parse_parameters(raw: Any) -> list[ParameterExtraction]:
+    params: list[ParameterExtraction] = []
+    if not isinstance(raw, list):
+        return params
+    for p in raw:
+        if not isinstance(p, dict) or not p.get("name"):
+            continue
+        status = p.get("status")
+        value, unit_suffix = _coerce_parameter_value(p.get("value"))
+        unit = p.get("unit") or unit_suffix
+        params.append(
+            ParameterExtraction(
+                name=str(p["name"]).strip(),
+                value=value,
+                unit=str(unit).strip() if unit else None,
+                status=status if status in _VALID_STATUSES else None,
+            )
+        )
+    return params
+
+
 def _extraction_from_llm(data: dict[str, Any], raw: str) -> ExtractionResult | None:
     if not isinstance(data, dict) or "items" not in data:
         return None
@@ -138,6 +188,7 @@ def _extraction_from_llm(data: dict[str, Any], raw: str) -> ExtractionResult | N
                 quantity=max(int(i.get("quantity") or 1), 1),
                 age_years=i.get("age_years"),
                 confidence=float(i.get("confidence") or 0.5),
+                parameters=_parse_parameters(i.get("parameters")),
             )
             for i in data.get("items") or []
             if isinstance(i, dict)

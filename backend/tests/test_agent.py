@@ -125,3 +125,99 @@ class TestChatFallbackPipeline:
 
         followups = [e for e in events if e["type"] == "followup"]
         assert followups and "fabricante" in followups[0]["question"].lower()
+
+
+class TestParameterExtractionPipeline:
+    """Parámetros: vía LLM (cliente mockeado) y vía fallback por reglas."""
+
+    def _client(self, payload: dict):
+        chunks = [
+            {"choices": [{"delta": {"role": "assistant", "content": "{\"facility\":"}}]},
+            {"choices": [{"delta": {"content": json.dumps(payload)[len("{\"facility\":"):]}}]},
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            },
+        ]
+
+        def handler(request):
+            if request.url.path == "/v1/chat/completions":
+                return httpx.Response(
+                    200,
+                    content=_sse_body(*chunks),
+                    headers={"content-type": "text/event-stream"},
+                )
+            if request.url.path == "/v1/embeddings":
+                return httpx.Response(200, json={"data": [{"embedding": [0.1] * 8}]})
+            return httpx.Response(404)
+
+        return make_client(handler)
+
+    def test_llm_extraction_includes_parameters(self, monkeypatch):
+        payload = {
+            "facility": "Hospital Aurora",
+            "city": "Ciudad de Panamá",
+            "country": "Panamá",
+            "items": [
+                {
+                    "modality": "MR",
+                    "manufacturer": "Siemens",
+                    "model": None,
+                    "quantity": 1,
+                    "age_years": 6,
+                    "confidence": 0.9,
+                    "parameters": [
+                        {"name": "nivel de helio", "value": "45%", "unit": None, "status": "warning"},
+                        {"name": "presión criógena", "value": None, "unit": None, "status": "ok"},
+                        {"name": "ruido", "value": "alto", "unit": None, "status": "banana"},
+                    ],
+                }
+            ],
+            "followup": None,
+        }
+        client = self._client(payload)
+        monkeypatch.setattr("app.agent.service._client", client)
+
+        request = ChatRequest(
+            message="la resonancia Siemens tiene el helio al 45%",
+            client_type="field_app",
+        )
+
+        async def collect():
+            return "".join([chunk async for chunk in handle_chat(request)])
+
+        events = _parse_sse(run(collect()))
+        extraction = next(e for e in events if e["type"] == "extraction")
+        assert extraction["data"]["extractor"] == "llm"
+        params = extraction["data"]["items"][0]["parameters"]
+        by_name = {p["name"]: p for p in params}
+        # "45%" se coerciona a valor numérico + unidad
+        assert by_name["nivel de helio"]["value"] == 45
+        assert by_name["nivel de helio"]["unit"] == "%"
+        assert by_name["nivel de helio"]["status"] == "warning"
+        assert by_name["presión criógena"]["status"] == "ok"
+        # status fuera de catálogo -> null
+        assert by_name["ruido"]["value"] == "alto"
+        assert by_name["ruido"]["status"] is None
+
+    def test_rule_fallback_extracts_parameters(self, monkeypatch):
+        monkeypatch.setattr("app.agent.service._client", None)
+        request = ChatRequest(
+            message=(
+                "El tomógrafo GE del Hospital Aurora en Panamá tiene el tubo con "
+                "1.2 millones de cortes, el calentamiento del ánodo está alto"
+            ),
+            client_type="field_app",
+        )
+
+        async def collect():
+            return "".join([chunk async for chunk in handle_chat(request)])
+
+        events = _parse_sse(run(collect()))
+        extraction = next(e for e in events if e["type"] == "extraction")
+        assert extraction["data"]["extractor"] == "rule"
+        params = extraction["data"]["items"][0]["parameters"]
+        by_name = {p["name"]: p for p in params}
+        assert by_name["cortes de tubo"]["value"] == 1200000
+        assert by_name["cortes de tubo"]["status"] == "warning"
+        assert by_name["calentamiento del ánodo"]["status"] == "warning"
