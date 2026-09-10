@@ -651,7 +651,14 @@ _EQUIPMENT_FILTERS = (
 
 _EQUIPMENT_MATCH = (
     "MATCH (f:Facility)-[:HAS]->(e:Equipment) "
-    "OPTIONAL MATCH (f)<-[:HAS]-(ci:City)<-[:HAS]-(co:Country) "
+    # El grafo puede tener >1 país por ciudad (dato real del seed); sin
+    # colapsar, el OPTIONAL MATCH multiplica filas y duplica equipos.
+    "OPTIONAL MATCH (f)<-[:HAS]-(ci:City) "
+    "WITH f, e, head(collect(DISTINCT ci)) AS ci "
+    "OPTIONAL MATCH (ci)<-[:HAS]-(co:Country) "
+    "WITH f, e, ci, head(collect(DISTINCT co)) AS co "
+    # WHERE tras WITH es un filtro global (tras OPTIONAL MATCH filtraría
+    # solo la parte opcional y las filas (f,e) sobrevivirían siempre).
     f"WHERE {_EQUIPMENT_FILTERS}"
 )
 
@@ -696,7 +703,11 @@ async def list_equipments(
             "       e.state AS state, f.id AS facility_id, f.name AS facility_name, "
             "       ci.name AS city, co.name AS country, "
             "       EXISTS { MATCH (pi:Parameter)-[:MEASURED_ON]->(e) "
-            "                WHERE pi.status IN ['warning', 'critical'] } AS has_issue "
+            "                WHERE pi.status IN ['warning', 'critical'] } AS has_issue, "
+            "       [(pi:Parameter)-[:MEASURED_ON]->(e) "
+            "        WHERE pi.status IN ['warning', 'critical'] | "
+            "        pi.name + '=' + coalesce(pi.value, '?') + coalesce(pi.unit, '') + "
+            "        ' (' + pi.status + ')'] AS issue_params "
             "ORDER BY f.name, e.id "
             "SKIP $offset LIMIT $limit",
             params,

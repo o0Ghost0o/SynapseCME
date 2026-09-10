@@ -48,8 +48,9 @@ no text outside the JSON:
 Tools:
 - list_equipment(args: modality?, manufacturer?, state?, country?, facility?, has_issue?) -> list of \
 equipment units matching the filters. modality is a code: MR, CT, XR, UL, MG, RF. Use has_issue=true \
-to list only units with parameters in warning or critical status.
-- get_equipment_detail(args: id) -> one equipment unit with its parameters (with status) and recent observations.
+to list only units with parameters in warning or critical status (their issue_params are included).
+- get_equipment_detail(args: id) -> one equipment unit with its parameters (with status) and recent \
+observations. id is a SINGLE id string copied from a list_equipment result (never a list).
 - search_observations(args: query) -> past field observations similar to the query (texts).
 - get_facility_info(args: name) -> equipment known at a facility.
 - ingest_observation(args: text) -> registers a new field observation into the database. Use ONLY when \
@@ -57,6 +58,8 @@ the user's message reports new field data; pass the reported text.
 
 Rules:
 - Call at most one tool per turn. After each tool result, call another tool or answer.
+- Omit any filter arg you do not need; never pass wildcards like "all" or "any".
+- Only pass a filter when the user restricts that field; never guess values (especially modality codes).
 - NEVER invent equipment, numbers or facts: only use information returned by tools.
 - If the tools found nothing, say so honestly in the answer.
 - answer_es must be a short, complete answer in Spanish.
@@ -78,20 +81,43 @@ class AssistantResult:
 
 
 def parse_json_object(text: str) -> dict[str, Any] | None:
-    """Pull the first JSON object out of an LLM reply (fenced or bare)."""
-    if "```" in text:
-        start = text.find("{", text.find("```"))
-    else:
-        start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end <= start:
-        return None
-    candidate = text[start : end + 1]
-    try:
-        data = json.loads(candidate)
-    except json.JSONDecodeError:
-        return None
-    return data if isinstance(data, dict) else None
+    """Pull the FIRST JSON object out of an LLM reply (fenced or bare).
+
+    MedPsy sometimes packs several JSON objects into one completion (the tool
+    call plus its anticipated final answer); only the first is actionable, so
+    balanced-brace matching stops at the first complete object instead of
+    spanning from the first ``{`` to the last ``}`` (which glued two objects
+    together and produced invalid JSON, exhausting the loop on nudges).
+    """
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        in_string = False
+        escape = False
+        for i, ch in enumerate(text[start:], start):
+            if escape:
+                escape = False
+                continue
+            if in_string:
+                if ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        data = json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        break  # objeto malformado: seguir buscando otro '{'
+                    return data if isinstance(data, dict) else None
+        start = text.find("{", start + 1)
+    return None
 
 
 # MedPsy is a reasoning model: even short routing calls burn most tokens on
@@ -137,13 +163,26 @@ def _as_bool(value: Any) -> bool:
     return value is True or str(value).strip().lower() in ("true", "1", "yes", "sí", "si")
 
 
+# MedPsy sometimes invents wildcard values ("state":"all") that filter
+# everything out; they mean "no filter" and are dropped at the tool boundary.
+_NO_FILTER_VALUES = {"all", "todos", "todas", "any", "cualquiera", "*", ""}
+
+
+def _as_filter(value: Any) -> str | None:
+    """Like _as_str but drops wildcard placeholders the weak model invents."""
+    text = _as_str(value)
+    if text is None or text.strip().lower() in _NO_FILTER_VALUES:
+        return None
+    return text
+
+
 async def _tool_list_equipment(args: dict[str, Any]) -> str:
     result = await engine.list_equipments(
-        modality=_as_str(args.get("modality")),
-        manufacturer=_as_str(args.get("manufacturer")),
-        state=_as_str(args.get("state")),
-        country=_as_str(args.get("country")),
-        facility=_as_str(args.get("facility")),
+        modality=_as_filter(args.get("modality")),
+        manufacturer=_as_filter(args.get("manufacturer")),
+        state=_as_filter(args.get("state")),
+        country=_as_filter(args.get("country")),
+        facility=_as_filter(args.get("facility")),
         has_issue=_as_bool(args.get("has_issue")),
         limit=LIST_EQUIPMENT_LIMIT,
     )
@@ -157,6 +196,8 @@ async def _tool_list_equipment(args: dict[str, Any]) -> str:
             str(it[k]) for k in ("modality", "manufacturer", "model") if it.get(k)
         ) or "unknown equipment"
         extras = []
+        if it.get("id"):
+            extras.append(f"id={it['id']}")
         if it.get("state"):
             extras.append(f"state={it['state']}")
         if it.get("age_years") is not None:
@@ -165,7 +206,10 @@ async def _tool_list_equipment(args: dict[str, Any]) -> str:
             extras.append(f"facility={it['facility_name']}")
         if it.get("country"):
             extras.append(f"country={it['country']}")
-        if it.get("has_issue"):
+        issues = it.get("issue_params") or []
+        if issues:
+            extras.append("ISSUES: " + "; ".join(str(x) for x in issues[:4]))
+        elif it.get("has_issue"):
             extras.append("HAS ISSUE (warning/critical parameter)")
         lines.append(f"- {label} ({', '.join(extras)})" if extras else f"- {label}")
     if total > len(items):
@@ -174,7 +218,11 @@ async def _tool_list_equipment(args: dict[str, Any]) -> str:
 
 
 async def _tool_get_equipment_detail(args: dict[str, Any]) -> str:
-    eid = _as_str(args.get("id"))
+    raw_id = args.get("id")
+    # MedPsy sometimes passes a list of ids; the contract is a single id.
+    if isinstance(raw_id, list) and raw_id:
+        raw_id = raw_id[0]
+    eid = _as_str(raw_id)
     if eid is None:
         return "Error: get_equipment_detail requires args.id (the equipment id)."
     detail = await engine.get_equipment_detail(eid)
@@ -299,6 +347,112 @@ _INVALID_JSON_NUDGE = (
     '{"action":"final","answer_es":"<answer in Spanish>"}.'
 )
 
+# Fast path: MedPsy 1.7B deliberates (or loops) when choosing tool args, and
+# anchors on few-shot localities. List-style questions with extractable
+# facets (modality / issue intent / facility name) are answered
+# deterministically: the graph does the filtering and the LLM only phrases
+# the answer from the tool result (with a template fallback if it fails).
+_ISSUE_RE = re.compile(
+    r"fuera de rango|cr[ií]tic|alerta|warning|problema|anomal|falla|"
+    r"mantenimiento|reparaci|desviaci",
+    re.IGNORECASE,
+)
+# Questions about history/details must keep the tool loop (RAG/detail tools).
+_NON_LIST_RE = re.compile(
+    r"observaci|historial|hist[oó]rico|detalle|ficha|detall",
+    re.IGNORECASE,
+)
+
+_ANSWER_PHRASING_PROMPT = (
+    "You are the SynapseCME assistant. Answer the user's question in Spanish "
+    "(español) — ALWAYS in Spanish, even if the data below is in English. "
+    "Use ONLY the EQUIPMENT DATA below: do not invent units, numbers or "
+    "locations. If the data does not contain the answer, say there is no "
+    "matching information. One or two short sentences.\n\nEQUIPMENT DATA:\n"
+)
+
+
+def _extract_facility(text: str, facility_names: list[str]) -> str | None:
+    """Longest known facility name contained in the message (case-insensitive)."""
+    lowered = text.lower()
+    best: str | None = None
+    for name in facility_names:
+        if name and name.lower() in lowered:
+            if best is None or len(name) > len(best):
+                best = name
+    return best
+
+
+async def _facility_names() -> list[str]:
+    driver = engine.driver()
+    if driver is None:
+        return []
+    try:
+        async with driver.session() as session:
+            result = await session.run("MATCH (f:Facility) RETURN f.name AS name")
+            return [r["name"] async for r in result if r.get("name")]
+    except Exception as exc:  # noqa: BLE001 - fast path must be best-effort
+        logger.warning("Fast path: no se pudieron listar instalaciones: %s", exc)
+        return []
+
+
+async def _try_list_fast_path(
+    client: QvacClient,
+    message: str,
+    ctx: Any,
+) -> AssistantResult | None:
+    """Deterministic list_equipment + LLM phrasing for facet-extractable questions.
+
+    Returns None when the message does not look like a list-style equipment
+    question with at least one extractable facet (modality, issue intent or
+    known facility), letting the bounded tool loop handle it instead.
+    """
+    text = message or ""
+    if _NON_LIST_RE.search(text):
+        return None
+    modality = None
+    for pattern, code in rule_extractor.MODALITY_KEYWORDS:
+        if re.search(pattern, text, re.IGNORECASE):
+            modality = code
+            break
+    has_issue = bool(_ISSUE_RE.search(text))
+    facility = _extract_facility(text, await _facility_names())
+    if modality is None and not has_issue and facility is None:
+        return None
+
+    tool_text = await _tool_list_equipment(
+        {
+            "modality": modality,
+            "has_issue": has_issue,
+            "facility": facility,
+        }
+    )
+    events: list[dict[str, Any]] = [{"type": "tool", "name": "list_equipment"}]
+    answer = ""
+    for max_tokens in (2048, 3072):
+        try:
+            answer = await client.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": _ANSWER_PHRASING_PROMPT + tool_text,
+                    },
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.0,
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:  # noqa: BLE001 - phrasing must not kill chat
+            logger.warning("Fast path: falló la redacción: %s", exc)
+            break
+        if answer:
+            break
+    if not answer or not answer.strip():
+        answer = tool_text  # fallback: datos crudos mejor que nada
+    answer = answer.strip()
+    events.append({"type": "answer", "text": answer})
+    return AssistantResult(events=events, answer=answer, generated="")
+
 
 async def answer_question(
     client: QvacClient,
@@ -324,6 +478,12 @@ async def answer_question(
         full_name=full_name,
         data_dir=data_dir,
     )
+    # MIXED messages report new field data (ingestion is primary there), so
+    # only plain questions take the deterministic fast path.
+    if intent == INTENT_QUESTION:
+        fast = await _try_list_fast_path(client, message, ctx)
+        if fast is not None:
+            return fast
     messages: list[dict[str, str]] = [
         {"role": "system", "content": TOOL_SYSTEM_PROMPT},
         {"role": "user", "content": message},
@@ -333,11 +493,18 @@ async def answer_question(
     events: list[dict[str, Any]] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        try:
-            reply = await client.chat(messages, temperature=0.0, max_tokens=800)
-        except Exception as exc:  # noqa: BLE001 - a dead model must not kill chat
-            logger.warning("Tool loop: llamada al modelo falló: %s", exc)
-            break
+        # MedPsy's reasoning trace can exceed the first budget on hard turns
+        # (verified: 2048 tokens all burned on reasoning, empty content);
+        # escalate once before giving up.
+        reply: str | None = None
+        for max_tokens in (2048, 3072):
+            try:
+                reply = await client.chat(messages, temperature=0.0, max_tokens=max_tokens)
+            except Exception as exc:  # noqa: BLE001 - a dead model must not kill chat
+                logger.warning("Tool loop: llamada al modelo falló: %s", exc)
+                break
+            if reply:
+                break
         if not reply:
             break
         replies.append(reply)

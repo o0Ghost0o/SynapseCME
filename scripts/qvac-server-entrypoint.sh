@@ -120,7 +120,7 @@ add_entry() {
     $1"
 }
 
-add_entry "$(emit_model_entry "$MEDPSY_MODEL" llm 4096)"
+add_entry "$(emit_model_entry "$MEDPSY_MODEL" llm 8192)"
 add_entry "$(emit_model_entry "$EMBED_MODEL" embeddings 8192)"
 
 mkdir -p "$CONFIG_DIR"
