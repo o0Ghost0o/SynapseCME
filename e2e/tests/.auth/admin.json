@@ -1,0 +1,22 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "synapse.user",
+          "value": "{\"username\":\"admin\",\"full_name\":\"Administrador SynapseCME\",\"role\":\"admin\",\"disabled\":null,\"created_at\":null}"
+        },
+        {
+          "name": "synapse.access",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc4OTAwMDQzNiwiZXhwIjoxNzg5MDAxMzM2LCJ0eXBlIjoiYWNjZXNzIn0.KjROMgoLCR-h8HS7lJRqyRNm7yhsArZ8nxlH-pNM8jg"
+        },
+        {
+          "name": "synapse.refresh",
+          "value": "vbGHziBwQm4XJSV95hXkaX8aVOh89OH3qoZSdRQg1aEMJEcncMv6-w2fm7dISJJR"
+        }
+      ]
+    }
+  ]
+}
