@@ -25,8 +25,15 @@ set -u
 # that node:*-slim does not ship; the worker SIGABRTs without them (verified
 # against @qvac/cli 0.13.0 on node:22-bookworm-slim). libvulkan1 also unlocks
 # GPU acceleration where a Vulkan ICD is present.
+# GPU note (verified on driver 570.211.01): the NVIDIA Vulkan ICD
+# (libGLX_nvidia.so.0) dlopens libEGL.so.1 during init and refuses to
+# initialize entirely (vk_icdNegotiateLoaderICDInterfaceVersion ->
+# VK_ERROR_INITIALIZATION_FAILED, loader reports "Could not get
+# 'vkCreateInstance' ... backend silently falls back to CPU) when libEGL
+# is absent. node:*-slim ships neither it nor libGLX_nvidia's NEEDED X
+# libs, so all four must be present before the ICD will load.
 need_pkgs=""
-for lib in libatomic1 libssl3 libvulkan1; do
+for lib in libatomic1 libssl3 libvulkan1 libegl1 libxext6 libx11-6 libxcb1; do
     if ! dpkg -s "$lib" >/dev/null 2>&1; then
         need_pkgs="$need_pkgs $lib"
     fi
