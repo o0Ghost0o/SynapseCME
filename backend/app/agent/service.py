@@ -6,6 +6,7 @@ Emits SSE payload dicts in contract order:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -82,6 +83,75 @@ RAG_INSTRUCTIONS = (
     "it may be incomplete. Use it to disambiguate facilities and equipment, "
     "but never invent equipment that does not appear in the message or in that context."
 )
+
+# Conversación titles (Fase 4): one short non-streaming call after the first
+# exchange. English-only model; the title itself must be Spanish.
+TITLE_SYSTEM_PROMPT = (
+    "You generate very short conversation titles. Reply with only the title: "
+    "no quotes, no trailing punctuation, no explanation."
+)
+TITLE_USER_TEMPLATE = (
+    "Generate a 3-6 word Spanish title summarizing this exchange. "
+    "Reply with only the title.\nUser: {message}\nAssistant: {response}"
+)
+
+_title_tasks: set[asyncio.Task[None]] = set()
+
+
+async def generate_conversation_title(
+    client: QvacClient | None,
+    conversation_id: str,
+    user_message: str,
+    assistant_text: str = "",
+) -> str | None:
+    """Set the conversation title once (first exchange only).
+
+    LLM title when QVAC answers; deterministic fallback (first 6 words of the
+    user's message) otherwise. Returns the applied title or None when the
+    conversation already had one / the update failed.
+    """
+    existing = await db.get_conversation(conversation_id)
+    if existing is None or existing.get("title"):
+        return None
+    title = ""
+    if client is not None:
+        try:
+            reply = await client.chat(
+                [
+                    {"role": "system", "content": TITLE_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": TITLE_USER_TEMPLATE.format(
+                            message=user_message, response=assistant_text or "…"
+                        ),
+                    },
+                ],
+                temperature=0.0,
+                max_tokens=20,
+            )
+            if reply:
+                title = reply.strip().strip('"').strip()
+        except Exception as exc:  # noqa: BLE001 - titles must never break chat
+            logger.warning("Generación de título falló; usando fallback: %s", exc)
+    if not title:
+        title = " ".join(user_message.split()[:6])
+    if await db.set_conversation_title(conversation_id, title):
+        return title
+    return None
+
+
+def _schedule_title(
+    client: QvacClient | None,
+    conversation_id: str,
+    user_message: str,
+    assistant_text: str,
+) -> None:
+    """Fire-and-forget title generation; keeps a strong ref until it finishes."""
+    task = asyncio.create_task(
+        generate_conversation_title(client, conversation_id, user_message, assistant_text)
+    )
+    _title_tasks.add(task)
+    task.add_done_callback(_title_tasks.discard)
 
 _client: QvacClient | None = None
 
@@ -211,13 +281,26 @@ def _extraction_from_llm(data: dict[str, Any], raw: str) -> ExtractionResult | N
         return None
 
 
-async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) -> AsyncIterator[str]:
+async def handle_chat(
+    request: ChatRequest,
+    user: dict[str, Any] | None = None,
+    *,
+    conversation_id: str | None = None,
+) -> AsyncIterator[str]:
     """Yield SSE-encoded strings for the /api/chat stream.
 
     ``user`` is the authenticated JWT identity. The client-supplied
     ``contributor`` field is intentionally ignored: the capturer identity
     everywhere (Contributor node, MADE_BY, transaction_log actor) is the
     authenticated user.
+
+    ``conversation_id`` is the already-validated Postgres conversation this
+    exchange belongs to (validated in the endpoint; the user's message has
+    been persisted there before streaming starts). The assistant message is
+    persisted after the pipeline and the ``done`` event carries the id so the
+    client can anchor its session list. The conversation title is generated
+    asynchronously after ``done`` (fire-and-forget): clients refresh the list
+    via GET /api/conversations.
     """
     request_id = uuid.uuid4().hex[:12]
     if user is not None:
@@ -230,6 +313,7 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
     ttft_ms: int | None = None
     usage: dict[str, Any] | None = None
     full_text = ""
+    emitted_text = ""  # texto realmente mostrado al usuario como tokens
     used_fallback = False
     ext: ExtractionResult | None = None
 
@@ -286,6 +370,7 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
                 )
                 if data is None and full_text.strip():
                     # Texto libre (no JSON): sí es contenido para el usuario.
+                    emitted_text = full_text
                     yield _sse({"type": "token", "text": full_text})
                 used_fallback = True
                 ext = None
@@ -297,6 +382,7 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
         ext = rule_extractor.extract(request.message)
         ext.followup = ext.followup or rule_extractor.build_followup(ext)
         if used_fallback:
+            emitted_text = FALLBACK_ACK
             yield _sse({"type": "token", "text": FALLBACK_ACK})
 
     yield _sse({"type": "extraction", "data": ext.model_dump()})
@@ -340,12 +426,31 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
     except Exception as exc:  # noqa: BLE001
         logger.warning("No se pudo guardar perf_log: %s", exc)
 
-    yield _sse(
-        {
-            "type": "done",
-            "transaction_id": transaction_ids[0] if transaction_ids else request_id,
-        }
-    )
+    # 6) Persist the assistant turn (never blocks/affects the stream) --------
+    if conversation_id is not None:
+        try:
+            await db.add_chat_message(
+                conversation_id,
+                "assistant",
+                emitted_text,
+                extraction=ext.model_dump(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("No se pudo persistir el mensaje del asistente: %s", exc)
+
+    done_payload: dict[str, Any] = {
+        "type": "done",
+        "transaction_id": transaction_ids[0] if transaction_ids else request_id,
+    }
+    if conversation_id is not None:
+        done_payload["conversation_id"] = conversation_id
+    yield _sse(done_payload)
+
+    # 7) Title for new conversations: fire-and-forget after `done`. The
+    # client refreshes its list via GET /api/conversations (the title lands
+    # seconds later); never block the SSE on this call.
+    if conversation_id is not None:
+        _schedule_title(client, conversation_id, request.message, emitted_text)
 
 
 def record_inference(request_id: str, metrics: InferenceMetrics) -> None:

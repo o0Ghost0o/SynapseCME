@@ -43,6 +43,9 @@ class ChatRequest(BaseModel):
     message: str
     contributor: str | None = None
     client_type: str | None = None
+    # Optional anchor to an existing conversation (validated server-side:
+    # it must exist and belong to the caller). Missing -> new conversation.
+    conversation_id: str | None = None
 
 
 class IngestResult(BaseModel):

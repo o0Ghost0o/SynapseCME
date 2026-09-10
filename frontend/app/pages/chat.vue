@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast'
 import type { ExampleItem } from '~/utils/examples'
+import type { ConversationSummary } from '~/components/ConversationList.vue'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -9,9 +10,19 @@ interface ChatMessage {
   followup: string | null
   done: boolean
   error?: boolean
+  // Mensajes cargados del historial: no se re-ingieren ni se confirman.
+  historical?: boolean
 }
 
-const { fetchWithAuth } = useApi()
+interface ConversationMessage {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  extraction: Record<string, unknown> | null
+  created_at: string
+}
+
+const { fetchWithAuth, request } = useApi()
 const { show } = useToast()
 const { apiOnline, refresh } = useConnection()
 const { ensure } = useEvents()
@@ -19,12 +30,72 @@ const { user } = useAuth()
 
 onMounted(() => {
   ensure({ client_type: 'field_app', name: 'App de campo SynapseCME' })
+  void loadConversations()
 })
 
 const input = ref('')
 const sending = ref(false)
 const messages = ref<ChatMessage[]>([])
 const listEl = ref<HTMLElement | null>(null)
+
+// —— Sesiones de conversación ——
+const conversations = ref<ConversationSummary[]>([])
+const activeConversationId = ref<string | null>(null)
+const drawerOpen = ref(false)
+const loadingHistory = ref(false)
+
+async function loadConversations() {
+  try {
+    conversations.value = await request<ConversationSummary[]>('/api/conversations')
+  } catch {
+    // Sin sesiones el chat sigue funcionando en modo legacy
+  }
+}
+
+async function openConversation(id: string) {
+  drawerOpen.value = false
+  loadingHistory.value = true
+  try {
+    const conv = await request<{
+      id: string
+      title: string
+      messages: ConversationMessage[]
+    }>(`/api/conversations/${id}`)
+    activeConversationId.value = id
+    messages.value = conv.messages.map((m) => ({
+      role: m.role,
+      text: m.content,
+      extraction: m.extraction ? normalizeExtraction(m.extraction) : null,
+      followup: null,
+      done: true,
+      historical: true,
+    }))
+    scrollDown()
+  } catch {
+    show('No se pudo cargar la conversación')
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+function newConversation() {
+  activeConversationId.value = null
+  messages.value = []
+  drawerOpen.value = false
+  nextTick(() => captureEl.value?.focus())
+}
+
+async function deleteConversation(id: string) {
+  try {
+    const res = await fetchWithAuth(`/api/conversations/${id}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    conversations.value = conversations.value.filter((c) => c.id !== id)
+    if (activeConversationId.value === id) newConversation()
+    show('Conversación eliminada')
+  } catch {
+    show('No se pudo eliminar la conversación')
+  }
+}
 
 // —— Dictado (STT) ——
 const captureEl = ref<HTMLTextAreaElement | null>(null)
@@ -290,6 +361,13 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
       break
     case 'done':
       msg.done = true
+      // Ancla la conversación activa (creada server-side si no venía) y
+      // refresca la lista: el título se genera fire-and-forget tras el done,
+      // así que la lista se re-carga para mostrarlo cuando llegue.
+      if (typeof event.conversation_id === 'string' && event.conversation_id) {
+        activeConversationId.value = event.conversation_id
+        void loadConversations()
+      }
       show('Registro guardado en el grafo')
       break
   }
@@ -317,6 +395,7 @@ async function send() {
       body: JSON.stringify({
         message: text,
         client_type: 'field_app',
+        ...(activeConversationId.value ? { conversation_id: activeConversationId.value } : {}),
       }),
     })
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
@@ -361,14 +440,31 @@ const confirmed = reactive<Record<number, boolean>>({})
 </script>
 
 <template>
-  <div class="flex h-[calc(100dvh-11rem)] flex-col gap-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold text-white">Captura agent-first</h1>
-        <p class="mt-1 text-sm text-slate-400">
-          Describe en lenguaje natural el equipamiento instalado; el agente extrae la estructura al grafo.
-        </p>
-      </div>
+  <div class="flex h-[calc(100dvh-11rem)] gap-4">
+    <!-- Sidebar de conversaciones (desktop) -->
+    <aside class="glass hidden w-72 shrink-0 flex-col md:flex" aria-label="Conversaciones">
+      <ConversationList
+        :conversations="conversations"
+        :active-id="activeConversationId"
+        @select="openConversation"
+        @remove="deleteConversation"
+        @create="newConversation"
+      />
+    </aside>
+
+    <div class="flex min-w-0 flex-1 flex-col gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <button class="btn-ghost px-3 py-1.5 md:hidden" @click="drawerOpen = true">
+            ☰ Conversaciones
+          </button>
+          <div>
+            <h1 class="text-2xl font-bold text-white">Captura agent-first</h1>
+            <p class="mt-1 text-sm text-slate-400">
+              Describe en lenguaje natural el equipamiento instalado; el agente extrae la estructura al grafo.
+            </p>
+          </div>
+        </div>
       <div class="flex flex-wrap items-center gap-2">
         <span v-if="user" class="glass-chip border-emerald-300/30 bg-emerald-400/15 text-emerald-200">
           ✍️ Capturando como {{ user.full_name || user.username }}
@@ -447,10 +543,11 @@ const confirmed = reactive<Record<number, boolean>>({})
             <div class="mt-4 flex justify-end">
               <button
                 class="btn-primary"
-                :disabled="confirmed[i]"
+                :disabled="confirmed[i] || msg.historical"
+                :title="msg.historical ? 'Este registro ya fue confirmado en su momento' : undefined"
                 @click="confirmed[i] = true; show('Registro confirmado')"
               >
-                {{ confirmed[i] ? '✓ Confirmado' : 'Confirmar registro' }}
+                {{ confirmed[i] ? '✓ Confirmado' : msg.historical ? 'Registro histórico' : 'Confirmar registro' }}
               </button>
             </div>
           </div>
@@ -501,6 +598,29 @@ const confirmed = reactive<Record<number, boolean>>({})
         </button>
       </div>
     </div>
+    </div>
+
+    <!-- Drawer de conversaciones (móvil) -->
+    <Teleport to="body">
+      <div v-if="drawerOpen" class="fixed inset-0 z-50 flex md:hidden">
+        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="drawerOpen = false" />
+        <div
+          class="glass-strong relative m-0 flex h-full w-80 max-w-[85vw] flex-col p-0"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Conversaciones"
+          @click.stop
+        >
+          <ConversationList
+            :conversations="conversations"
+            :active-id="activeConversationId"
+            @select="openConversation"
+            @remove="deleteConversation"
+            @create="newConversation"
+          />
+        </div>
+      </div>
+    </Teleport>
 
     <ExamplesDialog v-model="examplesOpen" @pick="applyExample" />
 

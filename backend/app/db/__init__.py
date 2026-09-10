@@ -246,6 +246,29 @@ SCHEMA_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id)",
+    """
+    CREATE TABLE IF NOT EXISTS conversations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_message_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_conversations_user "
+    "ON conversations (user_id, last_message_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id BIGSERIAL PRIMARY KEY,
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL DEFAULT '',
+        extraction JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_conv "
+    "ON chat_messages (conversation_id, created_at)",
 ]
 
 
@@ -257,7 +280,7 @@ async def ensure_schema() -> bool:
     async with _pool.acquire() as conn:
         for stmt in SCHEMA_STATEMENTS:
             await conn.execute(stmt)
-    logger.info("Esquema PostgreSQL verificado (users, refresh_tokens)")
+    logger.info("Esquema PostgreSQL verificado (users, refresh_tokens, conversations)")
     return True
 
 
@@ -373,3 +396,132 @@ async def revoke_refresh_token(token_id: int) -> None:
         await conn.execute(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1", token_id
         )
+
+
+# ---------------------------------------------------------------------------
+# Conversations + chat messages (Fase 4: sesiones de chat múltiples)
+# ---------------------------------------------------------------------------
+
+_TS = "YYYY-MM-DD\"T\"HH24:MI:SSZ"
+
+
+def _conv_row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
+    d = dict(row)
+    d["id"] = str(d["id"])
+    return d
+
+
+async def create_conversation(user_id: int) -> dict[str, Any] | None:
+    """New empty conversation owned by `user_id`; None when Postgres is off."""
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"INSERT INTO conversations (user_id) VALUES ($1) "
+            f"RETURNING id, user_id, title, "
+            f"to_char(created_at, '{_TS}') AS created_at, "
+            f"to_char(last_message_at, '{_TS}') AS last_message_at",
+            user_id,
+        )
+        return _conv_row_to_dict(row) if row else None
+
+
+async def get_conversation(conversation_id: str) -> dict[str, Any] | None:
+    """Conversation row regardless of owner; None when missing or DB off."""
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT id, user_id, title, "
+            f"to_char(created_at, '{_TS}') AS created_at, "
+            f"to_char(last_message_at, '{_TS}') AS last_message_at "
+            f"FROM conversations WHERE id = $1",
+            conversation_id,
+        )
+        return _conv_row_to_dict(row) if row else None
+
+
+async def list_conversations(user_id: int) -> list[dict[str, Any]]:
+    """Owner's conversations, most recent activity first."""
+    if _pool is None:
+        return []
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT id, title, to_char(last_message_at, '{_TS}') AS last_message_at "
+            f"FROM conversations WHERE user_id = $1 "
+            f"ORDER BY last_message_at DESC",
+            user_id,
+        )
+        return [_conv_row_to_dict(r) for r in rows]
+
+
+async def delete_conversation(conversation_id: str) -> bool:
+    """True when a row was actually deleted (cascades to chat_messages)."""
+    if _pool is None:
+        return False
+    async with _pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM conversations WHERE id = $1", conversation_id
+        )
+        return result == "DELETE 1"
+
+
+async def add_chat_message(
+    conversation_id: str,
+    role: str,
+    content: str,
+    extraction: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Append a message and bump the conversation's last_message_at."""
+    if _pool is None:
+        return None
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"INSERT INTO chat_messages (conversation_id, role, content, extraction) "
+            f"VALUES ($1, $2, $3, $4::jsonb) RETURNING id, role, content, "
+            f"extraction::text AS extraction, to_char(created_at, '{_TS}') AS created_at",
+            conversation_id,
+            role,
+            content,
+            json.dumps(extraction, ensure_ascii=False) if extraction else None,
+        )
+        await conn.execute(
+            "UPDATE conversations SET last_message_at = now() WHERE id = $1",
+            conversation_id,
+        )
+        return dict(row) if row else None
+
+
+def _msg_row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
+    d = dict(row)
+    try:
+        d["extraction"] = json.loads(d["extraction"]) if d.get("extraction") else None
+    except (ValueError, TypeError):
+        d["extraction"] = None
+    return d
+
+
+async def list_chat_messages(conversation_id: str) -> list[dict[str, Any]]:
+    if _pool is None:
+        return []
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT id, role, content, extraction::text AS extraction, "
+            f"to_char(created_at, '{_TS}') AS created_at "
+            f"FROM chat_messages WHERE conversation_id = $1 ORDER BY id",
+            conversation_id,
+        )
+        return [_msg_row_to_dict(r) for r in rows]
+
+
+async def set_conversation_title(conversation_id: str, title: str) -> bool:
+    """True when the title was updated (conversation still exists)."""
+    if _pool is None:
+        return False
+    async with _pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE conversations SET title = $2 WHERE id = $1",
+            conversation_id,
+            title,
+        )
+        return result == "UPDATE 1"

@@ -111,6 +111,41 @@ class QvacClient:
             raise QvacError(f"QVAC no disponible: {exc}") from exc
         yield {"done": True, "text": full_text, "usage": usage}
 
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+    ) -> str | None:
+        """One-shot (non-streaming) chat completion; None when unavailable.
+
+        Used for short auxiliary calls (e.g. conversation titles) where the
+        caller does not want to consume an SSE stream.
+        """
+        payload: dict[str, Any] = {
+            "model": model or self.model,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        try:
+            resp = await self._client.post("/chat/completions", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("QVAC chat (no stream) no disponible: %s", exc)
+            return None
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        message = choices[0].get("message") or {}
+        text = message.get("content")
+        return text if isinstance(text, str) and text.strip() else None
+
     async def embed(self, text: str, model: str | None = None) -> list[float] | None:
         """Embedding vector from POST /v1/embeddings; None when unavailable."""
         try:
