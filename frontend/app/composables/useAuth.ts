@@ -150,8 +150,20 @@ async function logout(): Promise<void> {
 // Sesión inválida en el servidor: limpiar y volver a /login conservando la ruta.
 async function forceLogout(): Promise<void> {
   clearSession()
-  const current = useRoute().fullPath
-  await navigateTo({ path: '/login', query: { redirect: current } })
+  const route = useRoute()
+  // Ya estamos en /login (p. ej. el WS sigue reintentando con token caducado):
+  // no anidar redirect=/login?redirect=... en bucle. Se conserva solo un
+  // redirect previo válido y se limpia cualquier valor anidado.
+  if (route.path === '/login') {
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+    const clean = redirect && !redirect.startsWith('/login') ? redirect : ''
+    const target = clean ? { path: '/login' as const, query: { redirect: clean } } : '/login'
+    if (route.query.redirect !== clean) {
+      await navigateTo(target)
+    }
+    return
+  }
+  await navigateTo({ path: '/login', query: { redirect: route.fullPath } })
 }
 
 const isAuthenticated = computed(() => !!(accessToken.value || refreshToken.value))
