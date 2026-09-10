@@ -16,6 +16,15 @@ const navLinks = computed(() => {
   return links
 })
 
+const route = useRoute()
+const menuOpen = ref(false)
+watch(
+  () => route.fullPath,
+  () => {
+    menuOpen.value = false
+  },
+)
+
 const connectionDot = computed(() => ({
   online: apiOnline.value === true && wsStatus.value === 'online',
   cls:
@@ -48,7 +57,7 @@ onMounted(() => {
 <template>
   <div class="min-h-screen">
     <header class="sticky top-0 z-40 px-4 pt-4">
-      <nav class="glass mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+      <nav class="glass relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <NuxtLink to="/dashboard" class="flex items-center gap-2.5">
           <img
             src="/logo.svg"
@@ -59,7 +68,8 @@ onMounted(() => {
           />
         </NuxtLink>
 
-        <div class="ml-auto flex items-center gap-1 overflow-x-auto">
+        <!-- Navegación inline (desktop) -->
+        <div class="ml-auto hidden items-center gap-1 lg:flex">
           <NuxtLink
             v-for="link in navLinks"
             :key="link.to"
@@ -69,6 +79,40 @@ onMounted(() => {
           >
             {{ link.label }}
           </NuxtLink>
+        </div>
+
+        <!-- Hamburger (móvil/tablet) -->
+        <div class="relative ml-auto lg:hidden">
+          <button
+            class="btn-ghost px-3 py-1.5 text-sm"
+            :aria-expanded="menuOpen"
+            aria-label="Menú de navegación"
+            data-testid="nav-menu-button"
+            @click="menuOpen = !menuOpen"
+          >
+            {{ menuOpen ? '✕' : '☰' }} Menú
+          </button>
+          <Transition name="toast">
+            <div
+              v-if="menuOpen"
+              class="glass-strong absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl p-2"
+              data-testid="nav-menu"
+            >
+              <NuxtLink
+                v-for="link in navLinks"
+                :key="link.to"
+                :to="link.to"
+                class="nav-link block px-3 py-2.5"
+                active-class="nav-link-active"
+              >
+                {{ link.label }}
+              </NuxtLink>
+              <div class="mt-1 flex items-center gap-2 border-t border-white/10 px-3 pt-2.5">
+                <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
+                <span class="text-xs text-slate-300">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
+              </div>
+            </div>
+          </Transition>
         </div>
 
         <div class="hidden items-center gap-2 pl-2 sm:flex" :title="connectionDot.label">
