@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast'
+import type { ExampleItem } from '~/utils/examples'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -29,11 +30,48 @@ const listEl = ref<HTMLElement | null>(null)
 const captureEl = ref<HTMLTextAreaElement | null>(null)
 const dictating = ref(false)
 const transcribing = ref(false)
+const recordSecs = ref(0)
+const micModal = ref<'priming' | 'denied' | null>(null)
+const examplesOpen = ref(false)
 let mediaRecorder: MediaRecorder | null = null
 let recorderMime = ''
 let recordChunks: Blob[] = []
 let recordTimer: ReturnType<typeof setTimeout> | undefined
+let recordInterval: ReturnType<typeof setInterval> | undefined
+let recordCancelled = false
+let activeStream: MediaStream | null = null
 const MAX_RECORDING_MS = 60000
+const MIC_PRIMED_KEY = 'synapse-mic-primed'
+
+// Orden de preferencia: opus en Chrome/Android, mp4 en iOS/Safari, aac residual.
+const RECORDER_MIMES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
+
+function pickRecorderMime(): string | null {
+  if (typeof MediaRecorder === 'undefined') return null
+  for (const mime of RECORDER_MIMES) {
+    try {
+      if (MediaRecorder.isTypeSupported(mime)) return mime
+    } catch {
+      // isTypeSupported no disponible en este navegador
+    }
+  }
+  return null
+}
+
+function recorderExtension(): string {
+  if (recorderMime.includes('mp4')) return 'm4a'
+  if (recorderMime.includes('aac')) return 'aac'
+  return 'webm'
+}
+
+async function micPermissionState(): Promise<PermissionState | 'unsupported'> {
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+    return status.state
+  } catch {
+    return 'unsupported'
+  }
+}
 
 async function toggleDictation() {
   if (dictating.value) {
@@ -41,28 +79,84 @@ async function toggleDictation() {
     return
   }
   if (transcribing.value) return
+  const state = await micPermissionState()
+  if (state === 'denied') {
+    micModal.value = 'denied'
+    return
+  }
+  const primed = localStorage.getItem(MIC_PRIMED_KEY) === '1'
+  if (!primed && state !== 'granted') {
+    micModal.value = 'priming'
+    return
+  }
+  await startRecording()
+}
+
+function allowMicrophone() {
+  localStorage.setItem(MIC_PRIMED_KEY, '1')
+  micModal.value = null
+  void startRecording()
+}
+
+async function startRecording() {
+  const mime = pickRecorderMime()
+  if (mime === null) {
+    show('Tu navegador no soporta grabación de audio; escribe la observación a mano.')
+    return
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    activeStream = stream
     recordChunks = []
-    mediaRecorder = new MediaRecorder(stream)
-    recorderMime = mediaRecorder.mimeType || 'audio/webm'
+    recordCancelled = false
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    recorderMime = mediaRecorder.mimeType || mime || 'audio/webm'
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size) recordChunks.push(e.data)
     }
     mediaRecorder.onstop = () => {
       clearTimeout(recordTimer)
-      stream.getTracks().forEach((t) => t.stop())
+      clearInterval(recordInterval)
+      activeStream?.getTracks().forEach((t) => t.stop())
+      activeStream = null
       dictating.value = false
-      void uploadRecording()
+      if (!recordCancelled) void uploadRecording()
     }
+    recordSecs.value = 0
     mediaRecorder.start()
     dictating.value = true
+    recordInterval = setInterval(() => recordSecs.value++, 1000)
     recordTimer = setTimeout(() => mediaRecorder?.stop(), MAX_RECORDING_MS)
-  } catch {
+  } catch (err) {
     dictating.value = false
-    show('Permiso de micrófono denegado')
+    handleMicError(err)
   }
 }
+
+function cancelRecording() {
+  recordCancelled = true
+  mediaRecorder?.stop()
+  show('Dictado cancelado')
+}
+
+function handleMicError(err: unknown) {
+  const name = (err as DOMException | null)?.name ?? ''
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    micModal.value = 'denied'
+  } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    show('No se encontró micrófono en este dispositivo')
+  } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+    show('El micrófono está en uso por otra aplicación')
+  } else {
+    show('No se pudo iniciar el micrófono. Inténtalo de nuevo.')
+  }
+}
+
+const recordTimeLabel = computed(() => {
+  const m = Math.floor(recordSecs.value / 60)
+  const s = (recordSecs.value % 60).toFixed(0).padStart(2, '0')
+  return `${m}:${s}`
+})
 
 async function uploadRecording() {
   if (!recordChunks.length) return
@@ -70,7 +164,7 @@ async function uploadRecording() {
   transcribing.value = true
   try {
     const form = new FormData()
-    form.append('file', blob, 'dictation.webm')
+    form.append('file', blob, `dictation.${recorderExtension()}`)
     const res = await fetchWithAuth('/api/stt', { method: 'POST', body: form })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as { text?: string }
@@ -82,10 +176,16 @@ async function uploadRecording() {
       nextTick(() => captureEl.value?.focus())
     }
   } catch {
-    show('Dictado no disponible')
+    show('El servicio de dictado (STT) no está disponible')
   } finally {
     transcribing.value = false
   }
+}
+
+function applyExample(example: ExampleItem) {
+  input.value = example.text
+  nextTick(() => captureEl.value?.focus())
+  show('Ejemplo pegado en la captura')
 }
 
 const FIELD_DEFS: Array<{ key: string; label: string; aliases: string[] }> = [
@@ -173,10 +273,15 @@ function estadoValue(extraction: Record<string, unknown>): string {
 
 function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
   switch (event.type) {
-    case 'token':
-      msg.text += typeof event.text === 'string' ? event.text : ''
+    case 'token': {
+      const t = typeof event.text === 'string' ? event.text : ''
+      // Defensa en profundidad: el JSON crudo de extracción nunca debe
+      // renderizarse como burbuja de texto del agente.
+      if (!msg.text.trim() && t.trimStart().startsWith('{')) break
+      msg.text += t
       scrollDown()
       break
+    }
     case 'extraction':
       msg.extraction = normalizeExtraction((event.data ?? event.extraction ?? {}) as Record<string, unknown>)
       break
@@ -256,7 +361,7 @@ const confirmed = reactive<Record<number, boolean>>({})
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex h-[calc(100dvh-11rem)] flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold text-white">Captura agent-first</h1>
@@ -284,7 +389,7 @@ const confirmed = reactive<Record<number, boolean>>({})
       <button class="btn-ghost" @click="refresh()">Reintentar</button>
     </div>
 
-    <div ref="listEl" class="glass flex h-[46vh] flex-col gap-3 overflow-y-auto p-4">
+    <div ref="listEl" class="glass flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
       <div v-if="!messages.length" class="m-auto max-w-sm text-center text-sm text-slate-400">
         <p class="text-4xl">🎙️</p>
         <p class="mt-3">
@@ -353,7 +458,7 @@ const confirmed = reactive<Record<number, boolean>>({})
       </template>
     </div>
 
-    <div class="glass p-4">
+    <div class="glass p-4 pb-[max(env(safe-area-inset-bottom),env(keyboard-inset-bottom,0px))]">
       <label for="capture" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
         Captura rápida
       </label>
@@ -368,7 +473,10 @@ const confirmed = reactive<Record<number, boolean>>({})
         @keydown.enter.exact.prevent="send"
       />
       <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn-ghost" :disabled="dictating || transcribing" @click="examplesOpen = true">
+            💡 Ejemplos
+          </button>
           <button
             class="btn-ghost"
             :class="dictating ? 'border-rose-300/40 bg-rose-400/20 text-rose-200' : ''"
@@ -379,7 +487,13 @@ const confirmed = reactive<Record<number, boolean>>({})
             <span :class="dictating ? 'animate-pulse' : ''">{{ dictating ? '■' : '🎙️' }}</span>
             {{ dictating ? 'Escuchando…' : transcribing ? 'Transcribiendo…' : 'Dictar' }}
           </button>
-          <p v-if="dictating" class="text-xs text-rose-300">Toca de nuevo para detener</p>
+          <span v-if="dictating" class="glass-chip border-rose-300/40 bg-rose-400/15 font-mono text-rose-200">
+            ⏱ {{ recordTimeLabel }}
+          </span>
+          <button v-if="dictating" class="btn-ghost px-3 py-1.5 text-xs" @click="cancelRecording">Cancelar</button>
+          <p v-else-if="!transcribing" class="hidden text-xs text-slate-500 sm:block">
+            Toca Dictar para grabar una observación
+          </p>
         </div>
         <p class="hidden text-xs text-slate-500 lg:block">Enter para enviar · Mayús+Enter para salto de línea</p>
         <button class="btn-primary min-w-36" :disabled="sending || !input.trim()" @click="send">
@@ -387,5 +501,43 @@ const confirmed = reactive<Record<number, boolean>>({})
         </button>
       </div>
     </div>
+
+    <ExamplesDialog v-model="examplesOpen" @pick="applyExample" />
+
+    <!-- Priming de permiso de micrófono (solo la primera vez) -->
+    <Teleport to="body">
+      <div v-if="micModal === 'priming'" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="micModal = null" />
+        <div class="glass-strong relative w-full max-w-md p-6" role="dialog" aria-modal="true" aria-label="Permiso de micrófono">
+          <p class="text-3xl">🎙️</p>
+          <h2 class="mt-3 text-lg font-bold text-white">Permitir micrófono</h2>
+          <p class="mt-2 text-sm leading-relaxed text-slate-300">
+            SynapseCME usa el micrófono para transcribir tus observaciones de campo a texto. El audio se envía al
+            servidor local para transcribirse y no se guarda. El navegador te pedirá confirmar el permiso.
+          </p>
+          <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button class="btn-ghost" @click="micModal = null">Ahora no</button>
+            <button class="btn-primary" @click="allowMicrophone">Permitir micrófono</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Permiso denegado: instrucciones accionables, sin reintentos ciegos -->
+      <div v-else-if="micModal === 'denied'" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="micModal = null" />
+        <div class="glass-strong relative w-full max-w-md p-6" role="dialog" aria-modal="true" aria-label="Micrófono bloqueado">
+          <p class="text-3xl">🚫</p>
+          <h2 class="mt-3 text-lg font-bold text-white">Micrófono bloqueado</h2>
+          <p class="mt-2 text-sm leading-relaxed text-slate-300">
+            El permiso de micrófono está denegado. Para volver a dictar, habilítalo en la configuración del sitio:
+            toca el icono 🔒 de la barra de direcciones, cambia el permiso de micrófono a «Permitir» y recarga la
+            página.
+          </p>
+          <div class="mt-5 flex justify-end">
+            <button class="btn-primary" @click="micModal = null">Entendido</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

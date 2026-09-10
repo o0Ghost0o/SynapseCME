@@ -10,6 +10,8 @@ const failed = ref(false)
 const tree = ref<RegionNode[]>([])
 const facility = ref<FacilityInfo | null>(null)
 const facilityLoading = ref(false)
+// En <lg el árbol va colapsado tras un toggle (la rejilla pasa a una columna).
+const showTree = ref(false)
 
 // Expansión del árbol
 const expandedRegions = ref<Set<string>>(new Set())
@@ -43,6 +45,8 @@ async function loadTree() {
 
 async function pickFacility(f: FacilityRef) {
   facilityLoading.value = true
+  // En móvil, elegir instalación cierra el árbol para dejar sitio al detalle.
+  showTree.value = false
   try {
     facility.value = normalizeFacility(await request(`/api/facility/${encodeURIComponent(f.id)}`), f.id)
   } catch {
@@ -120,8 +124,13 @@ onMounted(loadTree)
     </div>
 
     <div v-else class="grid gap-4 lg:grid-cols-[360px_1fr]">
+      <button class="btn-ghost lg:hidden" @click="showTree = !showTree">
+        {{ showTree ? '▲ Ocultar jerarquía' : '▼ Mostrar jerarquía' }}
+        <span v-if="tree.length" class="glass-chip">{{ totalFacilities }} instalaciones</span>
+      </button>
+
       <!-- Árbol de jerarquía -->
-      <div class="glass max-h-[75vh] overflow-y-auto p-4">
+      <div class="glass max-h-[75vh] overflow-y-auto p-4" :class="showTree ? '' : 'hidden lg:block'">
         <h2 class="text-sm font-semibold text-white">Jerarquía</h2>
         <p class="mt-0.5 text-xs text-slate-500">Regiones · Países · Instalaciones</p>
 

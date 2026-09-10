@@ -216,8 +216,11 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
                 token = event.get("token", "")
                 if ttft_ms is None:
                     ttft_ms = now_ms
+                # Los tokens del LLM NO se retransmiten: el contrato pide
+                # JSON puro, así que el stream de tokens sería el JSON crudo
+                # de extracción renderizado como mensaje. Se acumulan y solo
+                # se emiten como texto si la respuesta no es JSON de extracción.
                 full_text += token
-                yield _sse({"type": "token", "text": token})
         except QvacError as exc:
             logger.warning("Extractor con reglas activado: %s", exc)
             used_fallback = True
@@ -230,6 +233,9 @@ async def handle_chat(request: ChatRequest, user: dict[str, Any] | None = None) 
                     "La respuesta del modelo no trajo JSON válido; "
                     "usando extractor por reglas"
                 )
+                if data is None and full_text.strip():
+                    # Texto libre (no JSON): sí es contenido para el usuario.
+                    yield _sse({"type": "token", "text": full_text})
                 used_fallback = True
                 ext = None
     else:

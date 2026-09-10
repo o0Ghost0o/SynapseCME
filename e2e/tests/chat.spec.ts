@@ -36,4 +36,8 @@ test('captura con extracción estructurada visible', async ({ page }) => {
   await expect(confirm).toBeEnabled()
   await confirm.click()
   await expect(page.getByRole('button', { name: /confirmado/i })).toBeVisible()
+
+  // El JSON crudo de extracción nunca debe renderizarse como mensaje visible:
+  // el usuario solo ve la card "Extracción estructurada" y el texto del agente.
+  await expect(page.locator('body')).not.toContainText('{"facility"')
 })
