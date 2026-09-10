@@ -412,7 +412,7 @@ async def _merge_equipment_and_observation(
         "                       created_at: datetime()}) "
         "MERGE (o)-[:OBSERVED]->(e) "
         "MERGE (o)-[:MADE_BY]->(c) "
-        "FOREACH (p IN $parameters | "
+        "FOREACH (p IN $par_list | "
         "  MERGE (par:Parameter {source_observation_id: $oid, name: p.name}) "
         "  ON CREATE SET par.id = p.id, par.value = p.value, par.unit = p.unit, "
         "                par.status = p.status, par.created_at = datetime() "
@@ -431,7 +431,7 @@ async def _merge_equipment_and_observation(
         oid=obs_id,
         text=text,
         confidence=confidence,
-        parameters=parameters,
+        par_list=parameters,
     )
     record = await result.single()
     return dict(record) if record else {"equipment_id": equipment_id, "created": True}
