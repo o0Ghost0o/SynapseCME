@@ -90,8 +90,8 @@ onMounted(loadUsers)
 <template>
   <div class="flex flex-col gap-4">
     <div>
-      <h1 class="text-2xl font-bold text-white">Usuarios</h1>
-      <p class="mt-1 text-sm text-slate-400">
+      <h1 class="font-display text-2xl font-bold text-[#101828]">Usuarios</h1>
+      <p class="mt-1 text-sm text-[#5b6780]">
         Alta y revisión de usuarios de SynapseCME. Solo administradores.
       </p>
     </div>
@@ -100,7 +100,7 @@ onMounted(loadUsers)
       <!-- Lista de usuarios -->
       <div class="glass p-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-white">Usuarios registrados</h2>
+          <h2 class="font-display text-sm font-semibold text-[#101828]">Usuarios registrados</h2>
           <button class="btn-ghost px-3 py-1.5 text-xs" :disabled="loading" @click="loadUsers">
             {{ loading ? 'Actualizando…' : 'Actualizar' }}
           </button>
@@ -110,17 +110,17 @@ onMounted(loadUsers)
           <li
             v-for="u in users"
             :key="u.username"
-            class="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5"
+            class="flex items-center justify-between gap-3 rounded-xl border border-[#e9edf5] bg-[#f7f9fd] px-4 py-2.5"
           >
             <div class="min-w-0">
-              <p class="truncate text-sm text-white">{{ u.full_name || u.username }}</p>
-              <p class="text-[11px] text-slate-500">@{{ u.username }}</p>
+              <p class="truncate text-sm text-[#101828]">{{ u.full_name || u.username }}</p>
+              <p class="text-[11px] text-[#7a8499]">@{{ u.username }}</p>
             </div>
-            <span class="glass-chip" :class="u.role === 'admin' ? 'border-fuchsia-300/30 bg-fuchsia-400/15 text-fuchsia-200' : ''">
+            <span class="glass-chip" :class="u.role === 'admin' ? 'border-[#e4d7fb] bg-[#f5efff] text-[#6941c6]' : ''">
               {{ roleLabel(u.role) }}
             </span>
           </li>
-          <li v-if="!loading && !users.length" class="rounded-xl border border-dashed border-white/15 p-6 text-center text-xs text-slate-500">
+          <li v-if="!loading && !users.length" class="rounded-xl border border-dashed border-[#d4dbe8] p-6 text-center text-xs text-[#7a8499]">
             Sin usuarios registrados todavía.
           </li>
         </ul>
@@ -128,29 +128,29 @@ onMounted(loadUsers)
 
       <!-- Alta de usuario -->
       <form class="glass h-fit p-4" @submit.prevent="createUser">
-        <h2 class="text-sm font-semibold text-white">Crear usuario</h2>
+        <h2 class="font-display text-sm font-semibold text-[#101828]">Crear usuario</h2>
         <div class="mt-3 flex flex-col gap-3">
           <div>
-            <label for="new-username" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Usuario</label>
+            <label for="new-username" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#7a8499]">Usuario</label>
             <input id="new-username" v-model="form.username" class="glass-input py-2 text-sm" type="text" required :disabled="creating" />
           </div>
           <div>
-            <label for="new-fullname" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Nombre completo</label>
+            <label for="new-fullname" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#7a8499]">Nombre completo</label>
             <input id="new-fullname" v-model="form.full_name" class="glass-input py-2 text-sm" type="text" required :disabled="creating" />
           </div>
           <div>
-            <label for="new-password" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Contraseña</label>
+            <label for="new-password" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#7a8499]">Contraseña</label>
             <input id="new-password" v-model="form.password" class="glass-input py-2 text-sm" type="password" autocomplete="new-password" required :disabled="creating" />
           </div>
           <div>
-            <label for="new-role" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">Rol</label>
+            <label for="new-role" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#7a8499]">Rol</label>
             <select id="new-role" v-model="form.role" class="glass-input py-2 text-sm" :disabled="creating">
-              <option v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value" class="bg-slate-900">
+              <option v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
               </option>
             </select>
           </div>
-          <p v-if="error" class="rounded-xl border border-rose-300/30 bg-rose-400/15 px-3 py-2 text-center text-xs text-rose-200" role="alert">
+          <p v-if="error" class="rounded-xl border border-[#f5a9a9] bg-[#fdf0f0] px-3 py-2 text-center text-xs text-[#b42318]" role="alert">
             {{ error }}
           </p>
           <button class="btn-primary" type="submit" :disabled="creating || !form.username.trim() || !form.password">

@@ -3,12 +3,12 @@ defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <div class="glass mx-auto mt-16 max-w-md p-8 text-center">
-    <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 text-2xl">
-      ⚠️
+  <div class="glass-strong mx-auto mt-16 max-w-md p-8 text-center">
+    <div class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl border border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]">
+      <Icon name="wifi-off" :size="24" />
     </div>
-    <h2 class="text-xl font-bold text-white">Servidor local no disponible</h2>
-    <p class="mt-2 text-sm leading-relaxed text-slate-300">
+    <h2 class="text-xl font-bold text-[#101828]">Servidor local no disponible</h2>
+    <p class="mt-2 text-sm leading-relaxed text-[#5b6780]">
       No se pudo contactar con la API de SynapseCME. Comprueba que la pasarela y el
       backend estén en marcha en este mismo origen y vuelve a intentarlo.
     </p>

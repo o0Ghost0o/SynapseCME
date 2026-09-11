@@ -38,10 +38,10 @@ const activePulse = ref<string | null>(null)
 const svgEl = ref<SVGSVGElement | null>(null)
 
 const TYPE_COLORS = GRAPH_TYPE_COLORS
-const FALLBACK_PALETTE = ['#818cf8', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c']
+const FALLBACK_PALETTE = ['#6366f1', '#0284c7', '#0ea5e9', '#7c3aed', '#d99a00', '#a78bfa', '#0284c7']
 
 function colorFor(type?: string): string {
-  if (!type) return '#94a3b8'
+  if (!type) return '#98a2b8'
   const key = type.toLowerCase()
   if (TYPE_COLORS[key]) return TYPE_COLORS[key]
   let hash = 0
@@ -383,7 +383,7 @@ function point(id: string): SimPoint {
         :y1="point(link.source).y"
         :x2="point(link.target).x"
         :y2="point(link.target).y"
-        :class="isLinkHighlighted(link) ? 'stroke-sky-300' : 'stroke-white/20'"
+        :class="isLinkHighlighted(link) ? 'stroke-[#0284c7]' : 'stroke-[#2d416e]'"
         :stroke-width="isLinkHighlighted(link) ? 2.2 : 1.2"
         :opacity="linkOpacity(link)"
         class="transition-opacity duration-150"
@@ -423,7 +423,7 @@ function point(id: string): SimPoint {
         :r="radiusFor(node.type)"
         :fill="colorFor(node.type)"
         fill-opacity="0.85"
-        stroke="rgba(255,255,255,0.55)"
+        stroke="rgba(255,255,255,0.9)"
         stroke-width="1"
         class="cursor-grab transition hover:fill-opacity-100 active:cursor-grabbing"
         @pointerdown="onNodeDown(node, $event)"
@@ -435,7 +435,7 @@ function point(id: string): SimPoint {
         :x="point(node.id).x"
         :y="point(node.id).y + radiusFor(node.type) + 14"
         text-anchor="middle"
-        class="fill-slate-300 text-[10px]"
+        class="fill-[#5b6780] text-[10px]"
       >
         {{ (node.label || node.id).slice(0, 22) }}
       </text>
@@ -448,12 +448,12 @@ function point(id: string): SimPoint {
         rx="10"
         width="204"
         height="48"
-        class="fill-slate-900/90 stroke-white/15"
+        class="fill-[#101828] stroke-[#e3e8f2]"
       />
       <text :x="tooltipX" :y="mousePos.y - 21" :text-anchor="tooltipAnchor" class="fill-white text-xs font-semibold">
         {{ hovered.label || hovered.id }}
       </text>
-      <text :x="tooltipX" :y="mousePos.y - 7" :text-anchor="tooltipAnchor" class="fill-slate-300 text-[10px]">
+      <text :x="tooltipX" :y="mousePos.y - 7" :text-anchor="tooltipAnchor" class="fill-[#cbd5ea] text-[10px]">
         {{ hovered.type || 'nodo' }}{{ hovered.state ? ` · ${hovered.state}` : '' }}
       </text>
     </g>

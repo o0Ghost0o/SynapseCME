@@ -2,22 +2,22 @@
  * Compartido por ForceGraph (pintado) y la leyenda de la página de red. */
 
 export const GRAPH_TYPE_COLORS: Record<string, string> = {
-  core: '#f8fafc',
-  instalacion: '#818cf8',
-  facility: '#818cf8',
-  hospital: '#818cf8',
-  equipo: '#38bdf8',
-  equipment: '#38bdf8',
-  asset: '#38bdf8',
-  modelo: '#34d399',
-  model: '#34d399',
-  fabricante: '#f472b6',
-  manufacturer: '#f472b6',
+  core: '#101828',
+  instalacion: '#6366f1',
+  facility: '#6366f1',
+  hospital: '#6366f1',
+  equipo: '#0284c7',
+  equipment: '#0284c7',
+  asset: '#0284c7',
+  modelo: '#0ea5e9',
+  model: '#0ea5e9',
+  fabricante: '#7c3aed',
+  manufacturer: '#7c3aed',
   region: '#a78bfa',
   pais: '#a78bfa',
   country: '#a78bfa',
-  cliente: '#fbbf24',
-  client: '#fbbf24',
+  cliente: '#d99a00',
+  client: '#d99a00',
 }
 
 /* Etiqueta legible por nivel; los alias (en/es) comparten color y etiqueta. */

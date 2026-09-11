@@ -34,8 +34,8 @@ onMounted(loadMetrics)
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-white">Métricas del modelo</h1>
-        <p class="mt-1 text-sm text-slate-400">
+        <h1 class="font-display text-2xl font-bold text-[#101828]">Métricas del modelo</h1>
+        <p class="mt-1 text-sm text-[#5b6780]">
           Rendimiento de inferencia local por ejecución: carga del modelo, tokens y latencia.
         </p>
       </div>
@@ -47,13 +47,13 @@ onMounted(loadMetrics)
     <!-- Franja de estadísticas -->
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div v-for="stat in stats" :key="stat.label" class="glass p-4">
-        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{{ stat.label }}</p>
-        <p class="mt-1 text-2xl font-bold text-white">{{ stat.value }}</p>
+        <p class="text-[11px] font-semibold uppercase tracking-wider text-[#7a8499]">{{ stat.label }}</p>
+        <p class="mt-1 font-display text-2xl font-bold text-[#101828]">{{ stat.value }}</p>
       </div>
     </div>
 
     <ApiUnavailable v-if="failed" @retry="loadMetrics" />
-    <div v-else-if="loading" class="glass p-10 text-center text-sm text-slate-400">
+    <div v-else-if="loading" class="glass p-10 text-center text-sm text-[#7a8499]">
       <span class="animate-pulse">Cargando métricas…</span>
     </div>
 
@@ -61,7 +61,7 @@ onMounted(loadMetrics)
       <div class="overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
-            <tr class="border-b border-white/10">
+            <tr class="border-b border-[#e3e8f2]">
               <th class="th-cell">Modelo</th>
               <th class="th-cell">Carga (ms)</th>
               <th class="th-cell">Tokens prompt</th>
@@ -76,23 +76,23 @@ onMounted(loadMetrics)
             <tr
               v-for="(entry, i) in entries"
               :key="i"
-              class="border-b border-white/5 transition hover:bg-white/5"
+              class="border-b border-[#eef1f7] transition hover:bg-[#f7f9fd]"
             >
-              <td class="td-cell font-medium text-white">{{ entry.model }}</td>
+              <td class="td-cell font-medium text-[#101828]">{{ entry.model }}</td>
               <td class="td-cell">{{ fmtNum(entry.modelLoadMs) }}</td>
               <td class="td-cell">{{ fmtNum(entry.promptTokens) }}</td>
               <td class="td-cell">{{ fmtNum(entry.generationTokens) }}</td>
               <td class="td-cell">{{ fmtNum(Math.round(entry.ttftMs ?? NaN) || null) }}</td>
               <td class="td-cell">{{ fmtNum(Math.round(entry.totalMs ?? NaN) || null) }}</td>
               <td class="td-cell">
-                <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200">
+                <span class="glass-chip border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
                   {{ fmtNum(entry.tps, 1) }}
                 </span>
               </td>
-              <td class="td-cell whitespace-nowrap text-slate-400">{{ fmtDate(entry.createdAt) }}</td>
+              <td class="td-cell whitespace-nowrap text-[#7a8499]">{{ fmtDate(entry.createdAt) }}</td>
             </tr>
             <tr v-if="!entries.length">
-              <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-500">
+              <td colspan="8" class="px-4 py-10 text-center text-sm text-[#7a8499]">
                 Aún no hay ejecuciones registradas. Las métricas aparecerán tras las primeras consultas al agente.
               </td>
             </tr>

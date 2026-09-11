@@ -20,7 +20,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'mr',
     label: 'Resonancia',
-    icon: '🧲',
+    icon: 'activity',
     examples: [
       {
         id: 'mr-helio',
@@ -39,7 +39,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'ct',
     label: 'CT',
-    icon: '🩻',
+    icon: 'grid',
     examples: [
       {
         id: 'ct-anodo',
@@ -58,7 +58,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'us',
     label: 'Ultrasonido',
-    icon: '🔊',
+    icon: 'gauge',
     examples: [
       {
         id: 'us-sonda',
@@ -77,7 +77,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'xr',
     label: 'Rayos X',
-    icon: '⚡',
+    icon: 'zap',
     examples: [
       {
         id: 'xr-corriente',
@@ -96,7 +96,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'linac',
     label: 'Acelerador lineal',
-    icon: '☢️',
+    icon: 'shield',
     examples: [
       {
         id: 'linac-dosis',
@@ -109,7 +109,7 @@ export const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   {
     id: 'preguntas',
     label: 'Preguntas',
-    icon: '💬',
+    icon: 'message',
     examples: [
       {
         id: 'q-fuera-rango',

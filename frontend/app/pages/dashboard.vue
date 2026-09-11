@@ -236,8 +236,8 @@ onMounted(loadTree)
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-white">Panel 360 — Cliente</h1>
-        <p class="mt-1 text-sm text-slate-400">
+        <h1 class="font-display text-2xl font-bold text-[#101828]">Panel 360 — Cliente</h1>
+        <p class="mt-1 text-sm text-[#5b6780]">
           Explora la jerarquía región → país → instalación y revisa el estado de la base instalada.
         </p>
       </div>
@@ -250,62 +250,75 @@ onMounted(loadTree)
     </div>
 
     <ApiUnavailable v-if="failed" @retry="loadTree" />
-    <div v-else-if="loading && !tree.length" class="glass p-10 text-center text-sm text-slate-400">
+    <div v-else-if="loading && !tree.length" class="glass p-10 text-center text-sm text-[#7a8499]">
       <span class="animate-pulse">Cargando jerarquía…</span>
     </div>
 
     <div v-else class="grid gap-4 lg:grid-cols-[360px_1fr]">
       <button class="btn-ghost lg:hidden" @click="showTree = !showTree">
-        {{ showTree ? '▲ Ocultar jerarquía' : '▼ Mostrar jerarquía' }}
+        {{ showTree ? 'Ocultar jerarquía' : 'Mostrar jerarquía' }}
+        <Icon :name="showTree ? 'chevron-up' : 'chevron-down'" :size="14" class="shrink-0" />
         <span v-if="tree.length" class="glass-chip">{{ totalFacilities }} instalaciones</span>
       </button>
 
       <!-- Árbol de jerarquía -->
       <div class="glass max-h-[75vh] overflow-y-auto p-4" :class="showTree ? '' : 'hidden lg:block'">
-        <h2 class="text-sm font-semibold text-white">Jerarquía</h2>
-        <p class="mt-0.5 text-xs text-slate-500">Regiones · Países · Instalaciones</p>
+        <h2 class="font-display text-sm font-semibold text-[#101828]">Jerarquía</h2>
+        <p class="mt-0.5 text-xs text-[#7a8499]">Regiones · Países · Instalaciones</p>
 
         <div class="mt-3 flex flex-col gap-1.5">
           <div v-for="region in tree" :key="`r-${region.name}`">
             <button
               class="btn-ghost w-full justify-between text-left"
+              data-testid="tree-region"
               @click="expandedRegions = toggle(expandedRegions, region.name)"
             >
               <span class="flex items-center gap-2">
-                <span class="text-slate-400 transition" :class="expandedRegions.has(region.name) ? 'rotate-90' : ''">▸</span>
-                🌍 {{ region.name }}
+                <span class="text-[#7a8499] transition" :class="expandedRegions.has(region.name) ? 'rotate-90' : ''">
+                  <Icon name="chevron-right" :size="13" />
+                </span>
+                <Icon name="globe" :size="14" class="shrink-0 text-[#1d63d8]" />
+                {{ region.name }}
               </span>
               <span class="glass-chip">{{ region.countries.length }} países</span>
             </button>
 
-            <div v-if="expandedRegions.has(region.name)" class="ml-4 mt-1.5 flex flex-col gap-1.5 border-l border-white/10 pl-3">
+            <div v-if="expandedRegions.has(region.name)" class="ml-4 mt-1.5 flex flex-col gap-1.5 border-l border-[#e9edf5] pl-3">
               <div v-for="country in region.countries" :key="`c-${region.name}-${country.name}`">
                 <button
                   class="btn-ghost w-full justify-between text-left"
+                  data-testid="tree-country"
                   @click="expandedCountries = toggle(expandedCountries, `${region.name}/${country.name}`)"
                 >
                   <span class="flex items-center gap-2">
-                    <span class="text-slate-400 transition" :class="expandedCountries.has(`${region.name}/${country.name}`) ? 'rotate-90' : ''">▸</span>
-                    🏳️ {{ country.name }}
+                    <span class="text-[#7a8499] transition" :class="expandedCountries.has(`${region.name}/${country.name}`) ? 'rotate-90' : ''">
+                      <Icon name="chevron-right" :size="13" />
+                    </span>
+                    <Icon name="flag" :size="14" class="shrink-0 text-[#1d63d8]" />
+                    {{ country.name }}
                   </span>
                   <span class="glass-chip">{{ country.facilities.length }}</span>
                 </button>
 
                 <div
                   v-if="expandedCountries.has(`${region.name}/${country.name}`)"
-                  class="ml-4 mt-1.5 flex flex-col gap-1 border-l border-white/10 pl-3"
+                  class="ml-4 mt-1.5 flex flex-col gap-1 border-l border-[#e9edf5] pl-3"
                 >
                   <button
                     v-for="f in country.facilities"
                     :key="`f-${f.id}`"
                     class="btn-ghost justify-between text-left"
-                    :class="facility?.id === f.id ? 'border-indigo-300/40 bg-indigo-400/20' : ''"
+                    data-testid="tree-facility"
+                    :class="facility?.id === f.id ? 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]' : ''"
                     @click="pickFacility(f)"
                   >
-                    <span>🏥 {{ f.name }}</span>
-                    <span class="text-slate-500">→</span>
+                    <span class="flex items-center gap-2">
+                      <Icon name="hospital" :size="14" class="shrink-0" />
+                      {{ f.name }}
+                    </span>
+                    <span class="text-[#7a8499]">→</span>
                   </button>
-                  <p v-if="!country.facilities.length" class="rounded-lg border border-dashed border-white/10 px-3 py-1.5 text-[11px] text-slate-500">
+                  <p v-if="!country.facilities.length" class="rounded-lg border border-dashed border-[#d4dbe8] px-3 py-1.5 text-[11px] text-[#7a8499]">
                     Sin instalaciones registradas
                   </p>
                 </div>
@@ -313,7 +326,7 @@ onMounted(loadTree)
             </div>
           </div>
 
-          <p v-if="!tree.length" class="rounded-xl border border-dashed border-white/15 p-6 text-center text-xs text-slate-500">
+          <p v-if="!tree.length" class="rounded-xl border border-dashed border-[#d4dbe8] p-6 text-center text-xs text-[#7a8499]">
             Sin datos de jerarquía todavía.
           </p>
         </div>
@@ -321,15 +334,15 @@ onMounted(loadTree)
 
       <!-- Panel de detalle -->
       <div class="flex min-h-64 flex-col gap-4">
-        <div v-if="facilityLoading" class="glass p-10 text-center text-sm text-slate-400">
+        <div v-if="facilityLoading" class="glass p-10 text-center text-sm text-[#7a8499]">
           <span class="animate-pulse">Cargando instalación…</span>
         </div>
 
         <template v-else-if="facility || showAll">
           <div v-if="facility" class="glass-strong flex flex-wrap items-start justify-between gap-3 p-5">
             <div>
-              <h2 class="text-xl font-bold text-white">{{ facility.name }}</h2>
-              <p class="mt-0.5 text-sm text-slate-400">
+              <h2 class="font-display text-xl font-bold text-[#101828]">{{ facility.name }}</h2>
+              <p class="mt-0.5 text-sm text-[#5b6780]">
                 {{ [facility.city, facility.country].filter(Boolean).join(' · ') || 'Sin ubicación' }}
               </p>
             </div>
@@ -343,44 +356,44 @@ onMounted(loadTree)
             <div class="flex flex-wrap items-center gap-2">
               <button
                 class="btn-ghost"
-                :class="showAll ? 'border-indigo-300/40 bg-indigo-400/20' : ''"
+                :class="showAll ? 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]' : ''"
                 @click="showAll = !showAll"
               >
                 {{ showAll ? '◉ Viendo todos los equipos' : '○ Ver todos los equipos' }}
               </button>
               <button v-if="hasActiveFilters" class="btn-ghost" @click="clearFilters">Limpiar filtros</button>
-              <span v-if="globalLoading" class="text-xs text-slate-500">Actualizando…</span>
+              <span v-if="globalLoading" class="text-xs text-[#7a8499]">Actualizando…</span>
             </div>
             <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              <label class="flex flex-col gap-1 text-[11px] text-slate-400">
+              <label class="flex flex-col gap-1 text-[11px] text-[#7a8499]">
                 Modalidad
                 <select v-model="filterModality" class="glass-input py-2 text-sm">
                   <option value="">Todas</option>
                   <option v-for="m in modalityOptions" :key="m" :value="m">{{ m }}</option>
                 </select>
               </label>
-              <label class="flex flex-col gap-1 text-[11px] text-slate-400">
+              <label class="flex flex-col gap-1 text-[11px] text-[#7a8499]">
                 Fabricante
                 <select v-model="filterManufacturer" class="glass-input py-2 text-sm">
                   <option value="">Todos</option>
                   <option v-for="m in manufacturerOptions" :key="m" :value="m">{{ m }}</option>
                 </select>
               </label>
-              <label class="flex flex-col gap-1 text-[11px] text-slate-400">
+              <label class="flex flex-col gap-1 text-[11px] text-[#7a8499]">
                 Estado
                 <select v-model="filterState" class="glass-input py-2 text-sm">
                   <option value="">Todos</option>
                   <option v-for="s in stateOptions" :key="s" :value="s">{{ s }}</option>
                 </select>
               </label>
-              <label class="flex flex-col gap-1 text-[11px] text-slate-400" :class="showAll ? '' : 'opacity-50'">
+              <label class="flex flex-col gap-1 text-[11px] text-[#7a8499]" :class="showAll ? '' : 'opacity-50'">
                 País
                 <select v-model="filterCountry" class="glass-input py-2 text-sm" :disabled="!showAll">
                   <option value="">Todos</option>
                   <option v-for="c in countryOptions" :key="c" :value="c">{{ c }}</option>
                 </select>
               </label>
-              <label class="flex flex-col gap-1 text-[11px] text-slate-400">
+              <label class="flex flex-col gap-1 text-[11px] text-[#7a8499]">
                 Buscar
                 <input
                   v-model="searchQuery"
@@ -395,7 +408,7 @@ onMounted(loadTree)
           <div v-if="modalityGroups.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <div v-for="group in modalityGroups" :key="group.modality" data-testid="modality-card" class="glass p-4">
               <div class="flex items-center justify-between gap-2">
-                <h3 class="text-sm font-semibold text-white">{{ group.modality }}</h3>
+                <h3 class="font-display text-sm font-semibold text-[#101828]">{{ group.modality }}</h3>
                 <span class="glass-chip">×{{ group.items.length }}</span>
               </div>
               <ul class="mt-3 flex flex-col gap-2">
@@ -403,15 +416,18 @@ onMounted(loadTree)
                   v-for="eq in group.items"
                   :key="eq.id"
                   data-testid="equipment-item"
-                  class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 transition hover:border-indigo-300/30 hover:bg-white/10"
+                  class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#e9edf5] bg-[#f7f9fd] px-3 py-2 transition hover:border-[#c4ddfb] hover:bg-[#f4f8fe]"
                   @click="navigateTo(`/equipos/${eq.id}`)"
                 >
                   <div class="min-w-0">
-                    <p class="truncate text-xs text-slate-200">
+                    <p class="truncate text-xs font-medium text-[#1a2233]">
                       {{ equipmentName(eq) || 'Equipo sin modelo' }}
                     </p>
-                    <p class="mt-0.5 text-[11px] text-slate-500">
-                      <template v-if="showAll">🏥 {{ itemFacilityName(eq) }} · </template>
+                    <p class="mt-0.5 flex items-center gap-1 text-[11px] text-[#7a8499]">
+                      <template v-if="showAll">
+                        <Icon name="hospital" :size="11" class="shrink-0" />
+                        {{ itemFacilityName(eq) }} ·
+                      </template>
                       {{ itemAge(eq) !== null ? `${itemAge(eq)} años` : 'Antigüedad desconocida' }}
                       <template v-if="!showAll">· {{ freshness(itemUpdatedAt(eq)) }}</template>
                     </p>
@@ -421,39 +437,41 @@ onMounted(loadTree)
               </ul>
             </div>
           </div>
-          <p v-else class="glass border-dashed p-6 text-center text-sm text-slate-500">
+          <p v-else class="glass border-dashed p-6 text-center text-sm text-[#7a8499]">
             <template v-if="showAll">Ningún equipo coincide con los filtros.</template>
             <template v-else-if="hasActiveFilters">Ningún equipo de esta instalación coincide con los filtros.</template>
             <template v-else>Esta instalación no tiene equipos registrados todavía.</template>
           </p>
 
           <div v-if="facility && !showAll" class="glass p-5">
-            <h3 class="text-sm font-semibold text-amber-200">Oportunidades de renovación</h3>
-            <p class="mt-0.5 text-xs text-slate-400">Equipos estimados o confirmados con más de 8 años.</p>
+            <h3 class="font-display text-sm font-semibold text-[#8a6100]">Oportunidades de renovación</h3>
+            <p class="mt-0.5 text-xs text-[#7a8499]">Equipos estimados o confirmados con más de 8 años.</p>
             <ul v-if="renewalOpportunities.length" class="mt-3 flex flex-col gap-2">
               <li
                 v-for="eq in renewalOpportunities"
                 :key="eq.id"
-                class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2"
+                class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f2e2a8] bg-[#fffaeb] px-3 py-2"
               >
                 <div>
-                  <p class="text-sm text-amber-100">
+                  <p class="text-sm text-[#8a6100]">
                     {{ eq.modality }} — {{ [eq.manufacturer, eq.model].filter(Boolean).join(' ') || 'sin modelo' }}
                   </p>
-                  <p class="text-[11px] text-amber-200/70">{{ eq.age }} años de antigüedad</p>
+                  <p class="text-[11px] text-[#8a6100]/70">{{ eq.age }} años de antigüedad</p>
                 </div>
                 <StateChip :estado="eq.state" />
               </li>
             </ul>
-            <p v-else class="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-center text-xs text-slate-500">
+            <p v-else class="mt-3 rounded-xl border border-dashed border-[#d4dbe8] p-4 text-center text-xs text-[#7a8499]">
               Sin oportunidades: ningún equipo supera los 8 años.
             </p>
           </div>
         </template>
 
         <div v-else class="glass flex flex-1 flex-col items-center justify-center p-10 text-center">
-          <p class="text-4xl">🏥</p>
-          <p class="mt-3 max-w-xs text-sm text-slate-400">
+          <span class="grid h-14 w-14 place-items-center rounded-full border border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+            <Icon name="hospital" :size="26" />
+          </span>
+          <p class="mt-3 max-w-xs text-sm text-[#5b6780]">
             Expande una región y un país en el árbol y selecciona una instalación para ver su ficha 360.
           </p>
         </div>

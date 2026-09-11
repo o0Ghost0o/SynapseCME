@@ -33,16 +33,16 @@ function relDate(iso: string): string {
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex items-center justify-between gap-2 p-3">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400">
+      <h2 class="font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7a8499]">
         Conversaciones
       </h2>
       <button
-        class="btn-ghost px-3 py-1.5 text-xs"
+        class="btn-primary px-3 py-1.5 text-xs"
         data-testid="new-conversation"
         title="Nueva conversación"
         @click="emit('create')"
       >
-        ＋ Nueva
+        <Icon name="plus" :size="13" /> Nueva
       </button>
     </div>
     <ul class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -51,8 +51,8 @@ function relDate(iso: string): string {
           class="group flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors"
           :class="
             conv.id === props.activeId
-              ? 'border border-indigo-300/30 bg-indigo-400/15'
-              : 'border border-transparent hover:bg-white/5'
+              ? 'border border-[#c4ddfb] bg-[#eaf3fe]'
+              : 'border border-transparent hover:bg-[#f4f6fb]'
           "
           :data-testid="'conversation-item'"
           :data-cid="conv.id"
@@ -62,23 +62,23 @@ function relDate(iso: string): string {
           @keydown.enter="emit('select', conv.id)"
         >
           <div class="min-w-0 flex-1">
-            <p class="truncate text-sm" :class="conv.id === props.activeId ? 'text-white' : 'text-slate-200'">
+            <p class="truncate text-sm" :class="conv.id === props.activeId ? 'font-medium text-[#1d63d8]' : 'text-[#1a2233]'">
               {{ conv.title.trim() || 'Nueva conversación' }}
             </p>
-            <p class="mt-0.5 text-[11px] text-slate-500">{{ relDate(conv.last_message_at) }}</p>
+            <p class="mt-0.5 text-[11px] text-[#7a8499]">{{ relDate(conv.last_message_at) }}</p>
           </div>
           <button
-            class="shrink-0 rounded-lg px-2 py-1 text-xs text-slate-500 opacity-0 transition-opacity hover:bg-rose-400/15 hover:text-rose-300 focus:opacity-100 group-hover:opacity-100"
+            class="shrink-0 rounded-lg px-2 py-1 text-xs text-[#98a2b8] opacity-0 transition-opacity hover:bg-[#fdf0f0] hover:text-[#b42318] focus:opacity-100 group-hover:opacity-100"
             :data-testid="'delete-conversation'"
             :aria-label="`Eliminar conversación ${conv.title.trim() || 'nueva'}`"
             @click.stop="emit('remove', conv.id)"
           >
-            🗑
+            <Icon name="trash" :size="14" />
           </button>
         </div>
       </li>
-      <li v-if="!props.conversations.length" class="px-3 py-6 text-center text-xs text-slate-500">
-        Todavía no hay conversaciones.<br />Enviá una observación para empezar.
+      <li v-if="!props.conversations.length" class="px-3 py-6 text-center text-xs text-[#7a8499]">
+        Todavía no hay conversaciones.<br />Envía una observación para empezar.
       </li>
     </ul>
   </div>
