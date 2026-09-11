@@ -31,27 +31,20 @@ interface LinkDef {
   target: number
 }
 
-interface SynapticPulse {
-  linkIdx: number
-  progress: number
-  speed: number
-  color: string
-  forward: boolean
-}
-
+// Nodes styled with the flat palette from synapse-dark.svg
 const NODES_DATA: NodeDef[] = [
-  { id: 'hospital', label: 'Hospital Central', type: 'facility', color: '#38bdf8', ax: 0.16, ay: 0.18, r: 7 },
-  { id: 'rtx', label: 'Inferencia RTX 4090', type: 'core', color: '#00f2fe', ax: 0.42, ay: 0.15, r: 10, isHub: true },
-  { id: 'ct', label: 'Tomógrafo CT', type: 'equipment', color: '#60a5fa', ax: 0.74, ay: 0.18, r: 7 },
-  { id: 'rm', label: 'Resonancia Magnética', type: 'equipment', color: '#818cf8', ax: 0.88, ay: 0.32, r: 6 },
-  { id: 'consensus', label: 'Consenso Ponderado', type: 'consensus', color: '#34d399', ax: 0.26, ay: 0.36, r: 8 },
-  { id: 'graphrag', label: 'GraphRAG Core', type: 'core', color: '#00f2fe', ax: 0.60, ay: 0.38, r: 11, isHub: true },
-  { id: 'params', label: 'Parámetros Técnicos', type: 'param', color: '#a78bfa', ax: 0.82, ay: 0.52, r: 6 },
-  { id: 'observation', label: 'Observación en Campo', type: 'obs', color: '#38bdf8', ax: 0.45, ay: 0.58, r: 7 },
-  { id: 'ponderation', label: 'Algoritmo de Confianza', type: 'calc', color: '#2dd4bf', ax: 0.14, ay: 0.52, r: 6 },
-  { id: 'db', label: 'Base Instalada Neo4j', type: 'db', color: '#00f2fe', ax: 0.70, ay: 0.72, r: 8 },
-  { id: 'edge', label: 'Nodo Edge On-Premise', type: 'hardware', color: '#60a5fa', ax: 0.88, ay: 0.80, r: 7 },
-  { id: 'audit', label: 'Auditoría PostgreSQL', type: 'audit', color: '#a78bfa', ax: 0.35, ay: 0.78, r: 6 },
+  { id: 'hospital', label: 'Hospital Central', type: 'facility', color: '#4facfe', ax: 0.16, ay: 0.18, r: 6 },
+  { id: 'rtx', label: 'Inferencia RTX 4090', type: 'core', color: '#00f2fe', ax: 0.42, ay: 0.15, r: 8, isHub: true },
+  { id: 'ct', label: 'Tomógrafo CT', type: 'equipment', color: '#4facfe', ax: 0.74, ay: 0.18, r: 6 },
+  { id: 'rm', label: 'Resonancia Magnética', type: 'equipment', color: '#94a3b8', ax: 0.88, ay: 0.32, r: 5 },
+  { id: 'consensus', label: 'Consenso Ponderado', type: 'consensus', color: '#00f2fe', ax: 0.26, ay: 0.36, r: 7 },
+  { id: 'graphrag', label: 'GraphRAG Core', type: 'core', color: '#00f2fe', ax: 0.60, ay: 0.38, r: 9, isHub: true },
+  { id: 'params', label: 'Parámetros Técnicos', type: 'param', color: '#94a3b8', ax: 0.82, ay: 0.52, r: 5 },
+  { id: 'observation', label: 'Observación en Campo', type: 'obs', color: '#4facfe', ax: 0.45, ay: 0.58, r: 6 },
+  { id: 'ponderation', label: 'Algoritmo de Confianza', type: 'calc', color: '#94a3b8', ax: 0.14, ay: 0.52, r: 5 },
+  { id: 'db', label: 'Base Instalada Neo4j', type: 'db', color: '#00f2fe', ax: 0.70, ay: 0.72, r: 7 },
+  { id: 'edge', label: 'Nodo Edge On-Premise', type: 'hardware', color: '#4facfe', ax: 0.88, ay: 0.80, r: 6 },
+  { id: 'audit', label: 'Auditoría PostgreSQL', type: 'audit', color: '#94a3b8', ax: 0.35, ay: 0.78, r: 5 },
 ]
 
 const LINKS_DATA: LinkDef[] = [
@@ -89,7 +82,6 @@ let width = 0
 let height = 0
 
 const nodes: ActiveNode[] = []
-const pulses: SynapticPulse[] = []
 
 let hoveredNodeIndex: number | null = null
 let draggedNodeIndex: number | null = null
@@ -109,28 +101,15 @@ function initNodes() {
       vy: 0,
       phaseX: i * 1.37,
       phaseY: i * 2.19,
-      speedX: 0.0008 + (i % 3) * 0.00025,
-      speedY: 0.0007 + (i % 4) * 0.0002,
-      ampX: 12 + (i % 5) * 4,
-      ampY: 10 + (i % 4) * 3,
+      // Very gentle, calm, slow idle movement
+      speedX: 0.0003 + (i % 3) * 0.0001,
+      speedY: 0.00025 + (i % 4) * 0.0001,
+      ampX: 2.5 + (i % 3) * 1.0,
+      ampY: 2.0 + (i % 2) * 1.0,
       isResetting: false,
       scale: 1,
     })
   })
-}
-
-function initPulses() {
-  pulses.length = 0
-  const count = 6
-  for (let i = 0; i < count; i++) {
-    pulses.push({
-      linkIdx: Math.floor(Math.random() * LINKS_DATA.length),
-      progress: Math.random(),
-      speed: 0.0003 + Math.random() * 0.0004,
-      color: i % 2 === 0 ? '#00f2fe' : '#4facfe',
-      forward: Math.random() > 0.5,
-    })
-  }
 }
 
 function resize() {
@@ -154,7 +133,6 @@ function resize() {
 
   if (nodes.length === 0) {
     initNodes()
-    initPulses()
   } else {
     nodes.forEach((node) => {
       if (!node.isResetting && draggedNodeIndex === null) {
@@ -177,7 +155,7 @@ function getPointerPos(e: PointerEvent): { x: number; y: number } {
 function findNodeAt(pos: { x: number; y: number }): number | null {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const node = nodes[i]
-    const hitRadius = Math.max(node.def.r + 16, 28)
+    const hitRadius = Math.max(node.def.r + 14, 24)
     const dist = Math.hypot(node.x - pos.x, node.y - pos.y)
     if (dist <= hitRadius) {
       return i
@@ -210,7 +188,7 @@ function onPointerMove(e: PointerEvent) {
 
   if (draggedNodeIndex !== null) {
     const node = nodes[draggedNodeIndex]
-    const margin = 20
+    const margin = 16
     node.x = Math.max(margin, Math.min(width - margin, pos.x))
     node.y = Math.max(margin, Math.min(height - margin, pos.y))
     node.vx = 0
@@ -254,10 +232,11 @@ function updatePhysics(timestamp: number) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05)
   lastTime = timestamp
 
-  const K_SPRING = 45
-  const DAMPING = 6
+  const K_SPRING = 55
+  const DAMPING = 8
 
   nodes.forEach((node, i) => {
+    // Subtle idle drift target
     const driftX = Math.sin(timestamp * node.speedX + node.phaseX) * node.ampX
     const driftY = Math.cos(timestamp * node.speedY + node.phaseY) * node.ampY
     const targetX = node.def.ax * width + driftX
@@ -266,8 +245,8 @@ function updatePhysics(timestamp: number) {
     const isDragged = draggedNodeIndex === i
     const isHovered = hoveredNodeIndex === i
 
-    const targetScale = isDragged ? 1.45 : isHovered ? 1.35 : 1.0
-    node.scale += (targetScale - node.scale) * 0.15
+    const targetScale = isDragged ? 1.35 : isHovered ? 1.25 : 1.0
+    node.scale += (targetScale - node.scale) * 0.2
 
     if (isDragged) {
       return
@@ -286,7 +265,7 @@ function updatePhysics(timestamp: number) {
       node.x += node.vx * dt
       node.y += node.vy * dt
 
-      if (Math.hypot(dx, dy) < 0.6 && Math.hypot(node.vx, node.vy) < 0.6) {
+      if (Math.hypot(dx, dy) < 0.5 && Math.hypot(node.vx, node.vy) < 0.5) {
         node.isResetting = false
         node.x = targetX
         node.y = targetY
@@ -294,32 +273,9 @@ function updatePhysics(timestamp: number) {
         node.vy = 0
       }
     } else {
-      let desiredX = targetX
-      let desiredY = targetY
-
-      if (mousePos && !isDragged) {
-        const distToMouse = Math.hypot(node.x - mousePos.x, node.y - mousePos.y)
-        const magnetRadius = 85
-        if (distToMouse < magnetRadius) {
-          const pull = (1 - distToMouse / magnetRadius) * 20
-          const angle = Math.atan2(mousePos.y - node.y, mousePos.x - node.x)
-          desiredX += Math.cos(angle) * pull
-          desiredY += Math.sin(angle) * pull
-        }
-      }
-
-      node.x += (desiredX - node.x) * 0.08
-      node.y += (desiredY - node.y) * 0.08
-    }
-  })
-
-  pulses.forEach((pulse) => {
-    pulse.progress += pulse.speed * (dt * 1000)
-    if (pulse.progress >= 1) {
-      pulse.progress = 0
-      pulse.linkIdx = Math.floor(Math.random() * LINKS_DATA.length)
-      pulse.forward = Math.random() > 0.5
-      pulse.speed = 0.0003 + Math.random() * 0.0004
+      // Subtle organic settling to target
+      node.x += (targetX - node.x) * 0.1
+      node.y += (targetY - node.y) * 0.1
     }
   })
 }
@@ -355,7 +311,7 @@ function render(timestamp: number) {
 
   ctx.clearRect(0, 0, width, height)
 
-  // 1. Links
+  // 1. Flat Links (matching synapse-dark.svg stroke #334155 and active #00f2fe)
   LINKS_DATA.forEach((link) => {
     const sourceNode = nodes[link.source]
     const targetNode = nodes[link.target]
@@ -366,153 +322,84 @@ function render(timestamp: number) {
     const isConnectedToDragged =
       draggedNodeIndex === link.source || draggedNodeIndex === link.target
 
-    ctx!.save()
-    if (isConnectedToDragged) {
-      ctx!.strokeStyle = 'rgba(0, 242, 254, 0.85)'
-      ctx!.lineWidth = 2.4
-      ctx!.shadowColor = '#00f2fe'
-      ctx!.shadowBlur = 12
-    } else if (isConnectedToHovered) {
-      ctx!.strokeStyle = 'rgba(0, 242, 254, 0.6)'
-      ctx!.lineWidth = 1.8
-      ctx!.shadowColor = '#00f2fe'
-      ctx!.shadowBlur = 8
-    } else {
-      ctx!.strokeStyle = 'rgba(148, 178, 255, 0.22)'
-      ctx!.lineWidth = 1.0
-      ctx!.shadowBlur = 0
-    }
-
     ctx!.beginPath()
     ctx!.moveTo(sourceNode.x, sourceNode.y)
     ctx!.lineTo(targetNode.x, targetNode.y)
+
+    if (isConnectedToDragged) {
+      ctx!.strokeStyle = '#00f2fe'
+      ctx!.lineWidth = 2.0
+    } else if (isConnectedToHovered) {
+      ctx!.strokeStyle = '#38bdf8'
+      ctx!.lineWidth = 1.6
+    } else {
+      ctx!.strokeStyle = 'rgba(51, 65, 85, 0.7)' // #334155 base stroke
+      ctx!.lineWidth = 1.2
+    }
+
     ctx!.stroke()
-    ctx!.restore()
   })
 
-  // 2. Synaptic Pulses
-  pulses.forEach((pulse) => {
-    const link = LINKS_DATA[pulse.linkIdx]
-    if (!link) return
-    const s = nodes[pulse.forward ? link.source : link.target]
-    const t = nodes[pulse.forward ? link.target : link.source]
-    if (!s || !t) return
-
-    const px = s.x + (t.x - s.x) * pulse.progress
-    const py = s.y + (t.y - s.y) * pulse.progress
-
-    ctx!.save()
-    ctx!.fillStyle = pulse.color
-    ctx!.shadowColor = pulse.color
-    ctx!.shadowBlur = 10
-    ctx!.beginPath()
-    ctx!.arc(px, py, 2.8, 0, Math.PI * 2)
-    ctx!.fill()
-    ctx!.restore()
-  })
-
-  // 3. Nodes
+  // 2. Flat Nodes (clean vector styling from synapse-dark.svg)
   nodes.forEach((node, i) => {
     const isHovered = hoveredNodeIndex === i
     const isDragged = draggedNodeIndex === i
     const currentR = node.def.r * node.scale
 
-    ctx!.save()
-
-    // Outer concentric pulse ring for hubs or active nodes
-    if (node.def.isHub || isHovered || isDragged) {
-      const pulsePhase = (timestamp * 0.002 + i) % (Math.PI * 2)
-      const ringRadius = currentR + 5 + Math.sin(pulsePhase) * 3
+    // Interactive ring on hover/drag
+    if (isHovered || isDragged) {
       ctx!.beginPath()
-      ctx!.arc(node.x, node.y, ringRadius, 0, Math.PI * 2)
-      ctx!.strokeStyle = isDragged
-        ? 'rgba(0, 242, 254, 0.7)'
-        : isHovered
-          ? 'rgba(0, 242, 254, 0.5)'
-          : 'rgba(0, 242, 254, 0.25)'
-      ctx!.lineWidth = 1.2
+      ctx!.arc(node.x, node.y, currentR + 3.5, 0, Math.PI * 2)
+      ctx!.strokeStyle = '#00f2fe'
+      ctx!.lineWidth = 1.5
       ctx!.stroke()
     }
 
-    // Glow halo
-    if (isDragged) {
-      ctx!.shadowColor = '#00f2fe'
-      ctx!.shadowBlur = 18
-    } else if (isHovered) {
-      ctx!.shadowColor = node.def.color
-      ctx!.shadowBlur = 14
-    } else {
-      ctx!.shadowColor = node.def.color
-      ctx!.shadowBlur = node.def.isHub ? 8 : 4
-    }
-
-    // Node body gradient
-    const grad = ctx!.createRadialGradient(
-      node.x - currentR * 0.3,
-      node.y - currentR * 0.3,
-      currentR * 0.1,
-      node.x,
-      node.y,
-      currentR,
-    )
-    grad.addColorStop(0, '#ffffff')
-    grad.addColorStop(0.3, node.def.color)
-    grad.addColorStop(1, '#0e244d')
-
+    // Flat filled circle
     ctx!.beginPath()
     ctx!.arc(node.x, node.y, currentR, 0, Math.PI * 2)
-    ctx!.fillStyle = grad
+    ctx!.fillStyle = isDragged ? '#ffffff' : node.def.color
     ctx!.fill()
-
-    // Outer border stroke
-    ctx!.strokeStyle = isDragged ? '#ffffff' : node.def.color
-    ctx!.lineWidth = 1.5
-    ctx!.stroke()
-
-    ctx!.restore()
   })
 
-  // 4. Tooltip for Hovered / Dragged Node
+  // 3. Tooltip on Hover / Drag
   const activeIdx = draggedNodeIndex !== null ? draggedNodeIndex : hoveredNodeIndex
   if (activeIdx !== null && nodes[activeIdx]) {
     const activeNode = nodes[activeIdx]
     const label = activeNode.def.label
     const isDragging = draggedNodeIndex === activeIdx
-    const subtext = isDragging ? 'Arrastrando (suelta para reiniciar)' : 'Nodo GraphRAG'
+    const subtext = isDragging ? 'Soltar para reiniciar' : 'Nodo GraphRAG'
 
     ctx!.save()
     ctx!.font = '600 11px system-ui, -apple-system, sans-serif'
     const textMetrics = ctx!.measureText(label)
-    const boxW = Math.max(textMetrics.width + 24, 110)
-    const boxH = 36
+    const boxW = Math.max(textMetrics.width + 24, 105)
+    const boxH = 34
     const boxX = Math.max(8, Math.min(width - boxW - 8, activeNode.x - boxW / 2))
-    const boxY = activeNode.y - activeNode.def.r * activeNode.scale - boxH - 12
+    const boxY = activeNode.y - activeNode.def.r * activeNode.scale - boxH - 10
 
-    // Tooltip background
-    ctx!.fillStyle = 'rgba(14, 22, 48, 0.92)'
-    ctx!.strokeStyle = isDragging ? 'rgba(0, 242, 254, 0.8)' : 'rgba(56, 189, 248, 0.4)'
+    // Tooltip container (flat slate background with crisp border)
+    ctx!.fillStyle = 'rgba(15, 23, 42, 0.94)'
+    ctx!.strokeStyle = isDragging ? '#00f2fe' : '#38bdf8'
     ctx!.lineWidth = 1
-    ctx!.shadowColor = '#00f2fe'
-    ctx!.shadowBlur = 10
-    drawRoundedRect(ctx!, boxX, boxY, boxW, boxH, 8)
+    drawRoundedRect(ctx!, boxX, boxY, boxW, boxH, 6)
     ctx!.fill()
     ctx!.stroke()
 
     // Dot indicator
-    ctx!.shadowBlur = 0
     ctx!.fillStyle = activeNode.def.color
     ctx!.beginPath()
-    ctx!.arc(boxX + 12, boxY + 14, 3.5, 0, Math.PI * 2)
+    ctx!.arc(boxX + 11, boxY + 13, 3, 0, Math.PI * 2)
     ctx!.fill()
 
     // Label
     ctx!.fillStyle = '#f8fafc'
-    ctx!.fillText(label, boxX + 22, boxY + 17)
+    ctx!.fillText(label, boxX + 20, boxY + 16)
 
     // Subtitle
-    ctx!.font = '500 9.5px system-ui, -apple-system, sans-serif'
+    ctx!.font = '500 9px system-ui, -apple-system, sans-serif'
     ctx!.fillStyle = isDragging ? '#00f2fe' : '#94a3b8'
-    ctx!.fillText(subtext, boxX + 12, boxY + 29)
+    ctx!.fillText(subtext, boxX + 11, boxY + 27)
 
     ctx!.restore()
   }
