@@ -53,6 +53,16 @@ const userInitials = computed(() => {
 })
 
 async function handleWsAuthError() {
+  const path = route.path.toLowerCase().replace(/\/+$/, '') || '/'
+  if (
+    route.meta.auth === false ||
+    path === '/deck' ||
+    path.startsWith('/deck/') ||
+    path === '/offline' ||
+    path.startsWith('/offline/')
+  ) {
+    return
+  }
   const refreshed = await tryRefresh()
   if (refreshed) reconnect()
   else await forceLogout()
@@ -60,19 +70,36 @@ async function handleWsAuthError() {
 
 onMounted(() => {
   start()
-  ensure({
-    client_type: 'dashboard',
-    name: 'Panel web SynapseCME',
-    getToken: () => accessToken.value || null,
-    onAuthError: handleWsAuthError,
-  })
+  const path = route.path.toLowerCase().replace(/\/+$/, '') || '/'
+  // Conectar WebSocket únicamente si el usuario está autenticado y no está en /deck
+  if (isAuthenticated.value && !path.startsWith('/deck')) {
+    ensure({
+      client_type: 'dashboard',
+      name: 'Panel web SynapseCME',
+      getToken: () => accessToken.value || null,
+      onAuthError: handleWsAuthError,
+    })
+  }
+})
+
+// Reconectar si el usuario se autentica o navega a una ruta protegida
+watch([isAuthenticated, () => route.path], ([authed, path]) => {
+  const norm = String(path).toLowerCase().replace(/\/+$/, '') || '/'
+  if (authed && !norm.startsWith('/deck') && !norm.startsWith('/login')) {
+    ensure({
+      client_type: 'dashboard',
+      name: 'Panel web SynapseCME',
+      getToken: () => accessToken.value || null,
+      onAuthError: handleWsAuthError,
+    })
+  }
 })
 </script>
 
 <template>
   <VitePwaManifest />
   <div class="min-h-screen">
-    <header v-if="route.path !== '/login' && !route.path.startsWith('/deck')" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
+    <header v-if="route.path !== '/login' && !route.path.toLowerCase().startsWith('/deck')" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
       <nav class="relative mx-auto flex w-full max-w-[1800px] items-center gap-3 px-4 sm:px-6 lg:px-8 py-3">
         <NuxtLink to="/dashboard" class="flex items-center gap-2.5">
           <img
@@ -190,7 +217,7 @@ onMounted(() => {
       </nav>
     </header>
 
-    <main :class="route.path.startsWith('/deck') ? 'p-0 m-0' : 'mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-8 pb-6 pt-6'">
+    <main :class="route.path.toLowerCase().startsWith('/deck') ? 'p-0 m-0' : 'mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-8 pb-6 pt-6'">
       <NuxtPage />
     </main>
 

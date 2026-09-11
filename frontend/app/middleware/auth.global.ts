@@ -1,9 +1,19 @@
 export default defineNuxtRouteMiddleware((to) => {
+  if (to.meta.auth === false) return
+
   const auth = useAuth()
+  const path = to.path.toLowerCase().replace(/\/+$/, '') || '/'
 
   // Rutas públicas accesibles sin autenticación
-  if (to.path === '/login' || to.path === '/deck' || to.path.startsWith('/deck/')) {
-    if (to.path === '/login' && auth.isAuthenticated.value) return navigateTo('/dashboard')
+  const isPublic =
+    path === '/login' ||
+    path === '/deck' ||
+    path.startsWith('/deck/') ||
+    path === '/offline' ||
+    path.startsWith('/offline/')
+
+  if (isPublic) {
+    if (path === '/login' && auth.isAuthenticated.value) return navigateTo('/dashboard')
     return
   }
 

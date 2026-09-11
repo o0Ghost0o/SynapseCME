@@ -151,10 +151,23 @@ async function logout(): Promise<void> {
 async function forceLogout(): Promise<void> {
   clearSession()
   const route = useRoute()
+  const path = route.path.toLowerCase().replace(/\/+$/, '') || '/'
+
+  // En rutas públicas o con auth: false (p. ej. /deck, /offline), no forzar navegación a /login
+  if (
+    route.meta.auth === false ||
+    path === '/deck' ||
+    path.startsWith('/deck/') ||
+    path === '/offline' ||
+    path.startsWith('/offline/')
+  ) {
+    return
+  }
+
   // Ya estamos en /login (p. ej. el WS sigue reintentando con token caducado):
   // no anidar redirect=/login?redirect=... en bucle. Se conserva solo un
   // redirect previo válido y se limpia cualquier valor anidado.
-  if (route.path === '/login') {
+  if (path === '/login') {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
     const clean = redirect && !redirect.startsWith('/login') ? redirect : ''
     const target = clean ? { path: '/login' as const, query: { redirect: clean } } : '/login'
