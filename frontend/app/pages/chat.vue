@@ -533,7 +533,7 @@ const confirmed = reactive<Record<number, boolean>>({})
       <div v-if="!messages.length" class="m-auto max-w-md text-center text-sm text-slate-400">
         <p class="text-4xl">🎙️</p>
         <p class="mt-3">
-          Ejemplo: «En el Hospital General de Valencia hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad
+          Ejemplo: «En el Hospital Aurora de Ciudad de Panamá hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad
           confirmada».
         </p>
         <p class="mt-3 text-slate-500">¿Prefieres preguntar? Toca una sugerencia o escribe tu pregunta:</p>

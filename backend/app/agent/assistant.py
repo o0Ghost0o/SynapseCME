@@ -66,9 +66,9 @@ Rules:
 - Always reply with valid JSON only.
 
 Example:
-User: Cuantas resonancias hay en Valencia?
-{"action":"tool","tool":"list_equipment","args":{"modality":"MR","facility":"Valencia"}}
-{"action":"final","answer_es":"Hay 3 resonancias registradas en Valencia."}"""
+User: Cuantas resonancias hay en Ciudad de Panamá?
+{"action":"tool","tool":"list_equipment","args":{"modality":"MR","facility":"Ciudad de Panamá"}}
+{"action":"final","answer_es":"Hay 3 resonancias registradas en Ciudad de Panamá."}"""
 
 
 @dataclass

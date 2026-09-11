@@ -32,12 +32,12 @@ test('sugerencias de preguntas rellenan la captura', async ({ page }) => {
   // Con el panel vacío aparecen chips de preguntas de ejemplo. El prefijo 💬
   // evita colisionar con conversaciones del historial que puedan tener el
   // mismo título (el panel de conversaciones también expone role="button").
-  const suggestion = page.getByRole('button', { name: /💬.*cuántas resonancias hay en valencia/i })
+  const suggestion = page.getByRole('button', { name: /💬.*cuántas resonancias hay en ciudad de panamá/i })
   await expect(suggestion).toBeVisible()
   await suggestion.click()
 
   const capture = page.getByLabel(/captura rápida/i)
-  await expect(capture).toHaveValue(/cuántas resonancias hay en valencia/i)
+  await expect(capture).toHaveValue(/cuántas resonancias hay en ciudad de panamá/i)
 })
 
 test('respuesta con equipos: tarjetas enlazan a la ficha y el modo texto oculta', async ({ page }) => {

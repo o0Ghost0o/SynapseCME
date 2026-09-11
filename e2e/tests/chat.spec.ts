@@ -11,7 +11,7 @@ test('captura con extracción estructurada visible', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /captura agent-first/i })).toBeVisible()
 
   await page.getByLabel(/captura rápida/i).fill(
-    'En el Hospital General de Valencia hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad confirmada',
+    'En el Hospital Aurora de Ciudad de Panamá hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad confirmada',
   )
   await page.getByRole('button', { name: /enviar al agente/i }).click()
 
@@ -26,8 +26,8 @@ test('captura con extracción estructurada visible', async ({ page }) => {
       .locator('dd')
       .first()
 
-  await expect(await field('Instalación').textContent()).toContain('Hospital General de Valencia')
-  await expect(await field('Ciudad').textContent()).toContain('Valencia')
+  await expect(await field('Instalación').textContent()).toContain('Hospital Aurora')
+  await expect(await field('Ciudad').textContent()).toContain('Ciudad de Panamá')
   await expect(await field('Modalidad').textContent()).toContain('MR')
   await expect(await field('Cantidad').textContent()).toContain('2')
   await expect(await field('Fabricante').textContent()).toContain('Siemens')

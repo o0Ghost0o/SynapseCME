@@ -64,7 +64,8 @@ class SeedObservation:
 
 
 # ---------------------------------------------------------------------------
-# Dataset: 2 regions, 4 countries, 8 fictional facilities, 44 observations.
+# Dataset: 4 países de LATAM (mayoría Panamá), 8 fictional facilities,
+# 44 observations.
 # Deliberate duplicates across contributors drive consensus promotion
 # (Estimado -> Reportado -> Confirmado) and conflicting manufacturer/age
 # reports on the same unit. The last four observations carry technical
@@ -191,62 +192,65 @@ DATASET: list[SeedObservation] = [
         "Hay un ultrasonido en el Centro Médico Bahía en San José, Costa Rica",
         "Marina Solís",
     ),
-    # --- Hospital Miraluz (Valencia, España) — 4 obs ------------------------
+    # --- Hospital Istmo (David, Panamá) — 5 obs ------------------------------
     SeedObservation(
-        "Visité el Hospital Miraluz en Valencia, España, vi 3 tomógrafos Siemens",
+        "Visité el Hospital Istmo en David, Panamá, vi 2 resonancias "
+        "magnéticas y 1 mamografía",
+        "Marina Solís",
+    ),
+    SeedObservation(
+        "En el Hospital Istmo en David, Panamá, las 2 resonancias magnéticas "
+        "son GE de unos 6 años",
         "Jorge Iriarte",
     ),
     SeedObservation(
-        "El Hospital Miraluz en Valencia, España, tiene 2 resonancias magnéticas "
+        "El Hospital Istmo en David, Panamá, tiene 3 tomógrafos",
+        "Camila Duarte",
+    ),
+    SeedObservation(
+        "Vi 2 tomógrafos del Hospital Istmo en David, Panamá, operativos",
+        "Marina Solís",
+    ),
+    SeedObservation(
+        "Hay 2 ultrasonidos en el Hospital Istmo en David, Panamá",
+        "Jorge Iriarte",
+    ),
+    # --- Clínica Monte Azul (Penonomé, Panamá) — 4 obs -----------------------
+    SeedObservation(
+        "Visité la Clínica Monte Azul en Penonomé, Panamá, vi 1 resonancia "
+        "magnética y 2 radiografías",
+        "Camila Duarte",
+    ),
+    SeedObservation(
+        "La Clínica Monte Azul en Penonomé, Panamá, tiene 1 tomógrafo GE "
+        "de unos 4 años",
+        "Marina Solís",
+    ),
+    SeedObservation(
+        "Confirmo la resonancia de la Clínica Monte Azul en Penonomé, Panamá, "
+        "es Siemens",
+        "Jorge Iriarte",
+    ),
+    SeedObservation(
+        "Hay 2 mamografías en la Clínica Monte Azul en Penonomé, Panamá",
+        "Camila Duarte",
+    ),
+    # --- Centro Médico Andino (Lima, Perú) — 4 obs ---------------------------
+    SeedObservation(
+        "Visité el Centro Médico Andino en Lima, Perú, vi 3 tomógrafos Siemens",
+        "Jorge Iriarte",
+    ),
+    SeedObservation(
+        "El Centro Médico Andino en Lima, Perú, tiene 2 resonancias magnéticas "
         "Philips de unos 7 años",
         "Camila Duarte",
     ),
     SeedObservation(
-        "Confirmo los 3 tomógrafos Siemens del Hospital Miraluz en Valencia, España",
+        "Confirmo los 3 tomógrafos Siemens del Centro Médico Andino en Lima, Perú",
         "Marina Solís",
     ),
     SeedObservation(
-        "Vi 4 ultrasonidos en el Hospital Miraluz en Valencia, España",
-        "Jorge Iriarte",
-    ),
-    # --- Clínica Vega (Sevilla, España) — 4 obs ------------------------------
-    SeedObservation(
-        "Visité la Clínica Vega en Sevilla, España, vi 1 resonancia magnética y "
-        "2 radiografías",
-        "Camila Duarte",
-    ),
-    SeedObservation(
-        "La Clínica Vega en Sevilla, España, tiene 1 tomógrafo GE de unos 4 años",
-        "Marina Solís",
-    ),
-    SeedObservation(
-        "Confirmo la resonancia de la Clínica Vega en Sevilla, España, es Siemens",
-        "Jorge Iriarte",
-    ),
-    SeedObservation(
-        "Hay 2 mamografías en la Clínica Vega en Sevilla, España",
-        "Marina Solís",
-    ),
-    # --- Centro Médico Ría Alta (A Coruña, España) — 5 obs -------------------
-    SeedObservation(
-        "Visité el Centro Médico Ría Alta en A Coruña, España, vi 4 tomógrafos "
-        "y 1 resonancia magnética",
-        "Marina Solís",
-    ),
-    SeedObservation(
-        "El Centro Médico Ría Alta en A Coruña, España, tiene 3 ultrasonidos",
-        "Jorge Iriarte",
-    ),
-    SeedObservation(
-        "Los 4 tomógrafos del Centro Médico Ría Alta en A Coruña, España, son Canon",
-        "Camila Duarte",
-    ),
-    SeedObservation(
-        "Vi 2 radiografías en el Centro Médico Ría Alta en A Coruña, España",
-        "Marina Solís",
-    ),
-    SeedObservation(
-        "Hay una fluoroscopia en el Centro Médico Ría Alta en A Coruña, España",
+        "Vi 4 ultrasonidos en el Centro Médico Andino en Lima, Perú",
         "Jorge Iriarte",
     ),
     # --- Observaciones con parámetros técnicos (buenos y malos) -------------
@@ -280,12 +284,12 @@ EXPECTED_FACILITIES = {
     "Clínica Puerto Verde",
     "Hospital del Faro",
     "Centro Médico Bahía",
-    "Hospital Miraluz",
-    "Clínica Vega",
-    "Centro Médico Ría Alta",
+    "Hospital Istmo",
+    "Clínica Monte Azul",
+    "Centro Médico Andino",
 }
 
-EXPECTED_COUNTRIES = {"Panamá", "Colombia", "Costa Rica", "España"}
+EXPECTED_COUNTRIES = {"Panamá", "Colombia", "Costa Rica", "Perú"}
 
 
 def load_dataset() -> list[SeedObservation]:
