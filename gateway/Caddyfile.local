@@ -1,0 +1,16 @@
+# SynapseCME local gateway (native macOS development without Docker).
+# Routes port 3000 to local FastAPI backend (:8000) and Nuxt frontend (:3001).
+
+:3000 {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /ws/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3001
+	}
+}

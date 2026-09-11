@@ -50,8 +50,16 @@ cp .env.example .env
 # Cualquier máquina (CPU):
 docker compose up -d
 
-# En el nodo NVIDIA (RTX 3060 Ti):
+# En el nodo NVIDIA (Linux con RTX 3060 Ti):
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
+# En macOS Apple Silicon (GPU Metal vía host-hybrid):
+./scripts/qvac-mac-host-serve.sh
+docker compose -f docker-compose.yml -f docker-compose.mac-gpu.yml up -d
+
+# En macOS local nativo (SIN Docker, máxima velocidad con Metal GPU):
+make setup       # instala uv, caddy, qvac CLI, backend venv y frontend deps
+make dev         # inicia stack nativo completo (Metal QVAC + Backend + Frontend + Gateway)
 ```
 
 El servicio QVAC **resuelve los modelos al arrancar** (`scripts/qvac-server-entrypoint.sh` genera `qvac.config.json`): gana un GGUF local en `./models/<nombre>.gguf`, luego `QVAC_MODEL_SOURCE` (URL Pear/HTTP, p. ej. HuggingFace, para descarga P2P entre pares) y por último una constante del SDK. Los modelos se cargan de forma lazy (con `serve.load.timeoutMs` de 10 min para la primera descarga) y quedan cacheados. Si MedPsy no resuelve, el nodo queda arriba y el backend usa el extractor determinista. `./scripts/pull-models.sh` lista los modelos servidos.

@@ -1,0 +1,12 @@
+{
+  "serve": {
+    "models": {
+      "medpsy:q4_k_m": {"src": "https://huggingface.co/qvac/MedPsy-1.7B-GGUF/resolve/main/medpsy-1.7b-q4_k_m-imat.gguf", "type": "llm", "config": {"ctx_size": 8192}},
+      "EMBEDDINGGEMMA_300M_Q4_0": {"model": "EMBEDDINGGEMMA_300M_Q4_0"}
+    },
+    "load": {
+      "timeoutMs": 600000,
+      "cancelOnDisconnect": false
+    }
+  }
+}

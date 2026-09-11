@@ -1,0 +1,23 @@
+# macOS Apple Silicon GPU override (M1/M2/M3/M4 via Metal).
+#
+# Docker on macOS runs containers inside a Linux VM without direct Metal GPU
+# passthrough. To achieve native Metal GPU acceleration, this override points
+# the backend container at a QVAC inference server running NATIVELY on the
+# macOS host (where @qvac/llm-llamacpp leverages Metal and Unified Memory).
+#
+# Usage:
+#   1. Start the host inference server:
+#        ./scripts/qvac-mac-host-serve.sh
+#      (or start an OpenAI-compatible server like Ollama on host port 11434)
+#   2. Start Docker stack:
+#        docker compose -f docker-compose.yml -f docker-compose.mac-gpu.yml up -d
+#
+# The in-Docker qvac service still starts (backend depends_on it for
+# health/ordering) but serves no traffic; the backend talks to the macOS host.
+
+services:
+  backend:
+    environment:
+      QVAC_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
