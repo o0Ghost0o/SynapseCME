@@ -637,6 +637,51 @@ function applyFollowup(question: string) {
   input.value = question
 }
 
+async function copyFullChat() {
+  if (!messages.value.length) {
+    show('No hay mensajes en la conversación para copiar')
+    return
+  }
+  const lines: string[] = []
+  for (const m of messages.value) {
+    const sender = m.role === 'user' ? (user.value?.full_name || user.value?.username || 'Usuario') : 'SynapseCME'
+    const timeStr = m.time ? ` (${m.time})` : ''
+    lines.push(`[${sender}]${timeStr}:`)
+    if (m.text) {
+      lines.push(m.text)
+    }
+    if (m.extraction) {
+      lines.push('--- Extracción estructurada ---')
+      for (const def of FIELD_DEFS) {
+        const val = fieldValue(m.extraction, def)
+        if (val !== undefined && val !== null && val !== '') {
+          lines.push(`${def.label}: ${displayValue(def.key, val)}`)
+        }
+      }
+    }
+    if (m.equipment && m.equipment.length) {
+      lines.push('--- Equipos referenciados ---')
+      for (const eq of m.equipment) {
+        const title = [eq.manufacturer, eq.model || 'sin modelo', eq.modality].filter(Boolean).join(' ')
+        const loc = [eq.facility_name, eq.country].filter(Boolean).join(' · ')
+        const st = eq.state ? ` [${eq.state}]` : ''
+        lines.push(`- ${title} | ${loc}${st}`)
+      }
+    }
+    if (m.followup) {
+      lines.push(`Pregunta de seguimiento: ${m.followup}`)
+    }
+    lines.push('')
+  }
+  const fullText = lines.join('\n').trim()
+  try {
+    await navigator.clipboard.writeText(fullText)
+    show('Conversación copiada al portapapeles')
+  } catch {
+    show('Error al copiar al portapapeles')
+  }
+}
+
 const confirmed = reactive<Record<number, boolean>>({})
 </script>
 
@@ -673,6 +718,16 @@ const confirmed = reactive<Record<number, boolean>>({})
         <span class="glass-chip border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
           Pregunta o dicta una observación
         </span>
+        <button
+          v-if="messages.length"
+          type="button"
+          class="glass-chip border-[#d0d5dd] bg-white text-[#344054] hover:bg-[#f8fafc] hover:border-[#98a2b3] cursor-pointer transition flex items-center gap-1.5 px-3 py-1"
+          title="Copiar toda la conversación al portapapeles"
+          @click="copyFullChat"
+        >
+          <Icon name="copy" :size="13" class="text-[#475467]" />
+          <span class="font-medium">Copiar chat</span>
+        </button>
       </div>
     </div>
 

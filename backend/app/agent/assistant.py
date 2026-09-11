@@ -136,11 +136,26 @@ _INTERROGATIVE_START_RE = re.compile(
     re.IGNORECASE,
 )
 _QUERY_VERBS_RE = re.compile(
-    r"\b(dame|da|muestra|mu[ée]strame|mostrar|lista|listar|l[ií]stame|dime|decir|busca|buscar|b[uú]scame|encuentra|encontrar|consulta|consultar|ver|explica|expl[ií]came|explicar|hay\s+alg[uú]n\w*|cu[áa]les\s+son|qu[ée]\s+equipos?)\b",
+    r"\b("
+    r"dame|da|muestra|mu[ée]strame|mostrar|lista|listar|l[ií]stame|dime|decir|"
+    r"busca|buscar|b[uú]scame|encuentra|encontrar|consulta|consultar|ver|quiero\s+ver|"
+    r"explica|expl[ií]came|explicar|"
+    r"filtra|filtrar|f[ií]ltrame|filtro|filtrado|filtrando|"
+    r"solo|solamente|"
+    r"hay\s+alg[uú]n\w*|cu[áa]les\s+son|qu[ée]\s+equ[ií]?pos?"
+    r")\b",
+    re.IGNORECASE,
+)
+_FILTER_COMMAND_RE = re.compile(
+    r"\b(filtra(r|me)?|filtrado|filtro)\s+(por|los|las|equ[ií]?pos?)\b|"
+    r"\b(solo|solamente)\s+(los|las|equ[ií]?pos?)\b|"
+    r"\bequ[ií]?pos?\s+sin\s+(modelo|nombre|fabricante|descripci[oó]n)\b",
     re.IGNORECASE,
 )
 _QUESTION_EXPLANATION_RE = re.compile(
-    r"^\s*[¿?]?\s*(por\s*qu[ée]|c[óo]mo|explica|expl[ií]came|explicar|dame|da\b|muestra|mu[ée]strame|mostrar|lista\b|listar|l[ií]stame|cu[áa]l(es)?\s+es|qu[ée]\s+es)\b",
+    r"^\s*(ok\s+|vale\s+|bueno\s+|por\s*favor\s+|entonces\s+)?\s*[¿?]?\s*"
+    r"(por\s*qu[ée]|c[óo]mo|explica|expl[ií]came|explicar|dame|da\b|muestra|mu[ée]strame|mostrar|"
+    r"lista\b|listar|l[ií]stame|filtra|filtrar|f[ií]ltrame|filtro|solo|solamente|cu[áa]l(es)?\s+es|qu[ée]\s+es)\b",
     re.IGNORECASE,
 )
 
@@ -157,6 +172,7 @@ def classify_intent(client: QvacClient | None, message: str) -> str:
         bool(_QUESTION_MARK_RE.search(text))
         or bool(_INTERROGATIVE_START_RE.search(text))
         or bool(_QUERY_VERBS_RE.search(text))
+        or bool(_FILTER_COMMAND_RE.search(text))
     )
     has_digits = any(ch.isdigit() for ch in text)
 
@@ -244,9 +260,19 @@ async def _tool_list_equipment(
         refs.extend(_equipment_ref(it) for it in items)
     lines = [f"{total} equipment unit(s) matched. First {len(items)}:"]
     for it in items:
-        label = " ".join(
-            str(it[k]) for k in ("modality", "manufacturer", "model") if it.get(k)
-        ) or "unknown equipment"
+        modality = it.get("modality") or "Equipo"
+        mfg = it.get("manufacturer")
+        model = it.get("model")
+        name_parts = [modality]
+        if mfg:
+            name_parts.append(mfg)
+        if model:
+            name_parts.append(model)
+        elif not mfg:
+            name_parts.append("(sin fabricante ni modelo)")
+        else:
+            name_parts.append("(sin modelo)")
+        label = " ".join(name_parts)
         extras = []
         if it.get("id"):
             extras.append(f"id={it['id']}")
@@ -430,9 +456,12 @@ _NON_LIST_RE = re.compile(
 _ANSWER_PHRASING_PROMPT = (
     "You are the SynapseCME assistant. Answer the user's question in Spanish "
     "(español) — ALWAYS in Spanish, even if the data below is in English. "
-    "Use ONLY the EQUIPMENT DATA below: do not invent units, numbers or "
-    "locations. If the data does not contain the answer, say there is no "
-    "matching information. One or two short sentences.\n\nEQUIPMENT DATA:\n"
+    "The EQUIPMENT DATA below lists the matching equipment units from the hospital installed base "
+    "(for example, units lacking a model or manufacturer, or units filtered by modality/facility). "
+    "Summarize the findings clearly in 1 or 2 concise sentences in Spanish (state how many units were "
+    "found and mention examples of their modalities, manufacturers or locations). "
+    "If units are listed in EQUIPMENT DATA, NEVER say that they are not found or that there is no information.\n\n"
+    "EQUIPMENT DATA:\n"
 )
 
 
@@ -481,8 +510,20 @@ async def _try_list_fast_path(
             break
     has_issue = bool(_ISSUE_RE.search(text))
     facility = _extract_facility(text, await _facility_names())
-    is_unnamed = bool(re.search(r"sin\s+(nombre|modelo|descripci[oó]n|identific|datos)", text, re.IGNORECASE))
-    is_list_all = bool(re.search(r"\b(todos\s+los\s+equipos|lista\s+de\s+(todos\s+los\s+)?equipos|listar\s+equipos|cu[áa]ntos\s+equipos)\b", text, re.IGNORECASE))
+    is_unnamed = bool(
+        re.search(
+            r"sin\s+(nombre|modelo|descripci[oó]n|identific|datos)|equ[ií]?pos?\s+sin\s+modelo",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    is_list_all = bool(
+        re.search(
+            r"\b(todos\s+los\s+equ[ií]?pos|lista\s+de\s+(todos\s+los\s+)?equ[ií]?pos|listar\s+equ[ií]?pos|cu[áa]ntos\s+equ[ií]?pos|filtra(r)?(\s+por)?\s+equ[ií]?pos?)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
 
     if modality is None and not has_issue and facility is None and not is_unnamed and not is_list_all:
         return None
@@ -517,7 +558,13 @@ async def _try_list_fast_path(
         if answer:
             break
     if not answer or not answer.strip():
-        answer = tool_text  # fallback: datos crudos mejor que nada
+        count = len(ctx.equipment_refs)
+        if is_unnamed:
+            answer = f"Se encontraron {count} equipo(s) sin modelo o descripción completa registrados en el sistema."
+        elif count:
+            answer = f"Se encontraron {count} equipo(s) registrados que coinciden con los criterios de consulta."
+        else:
+            answer = "No se encontraron equipos registrados que coincidan con la búsqueda."
     answer = answer.strip()
     answer_event: dict[str, Any] = {"type": "answer", "text": answer}
     if ctx.equipment_refs:

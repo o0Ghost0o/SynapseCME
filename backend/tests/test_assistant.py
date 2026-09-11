@@ -422,3 +422,42 @@ class TestAnswerEquipmentRefs:
             assistant.answer_question(client, "¿Qué equipos hay?", intent="question", contributor="ana")
         )
         assert result.events[-1] == {"type": "answer", "text": "Hay 5 equipos."}
+
+    def test_classify_intent_filter_command(self):
+        assert assistant.classify_intent(None, "Dame una lista de todos los equpos sin nombre o descripcion") == "question"
+        assert assistant.classify_intent(None, "ok filtra por equipo sin modelo") == "question"
+        assert assistant.classify_intent(None, "filtra por equipo sin modelo") == "question"
+        assert assistant.classify_intent(None, "solo equipos sin modelo") == "question"
+        assert assistant.classify_intent(None, "ok filtra los 3 primeros equipos sin modelo") == "question"
+
+    def test_fast_path_filter_unnamed(self, monkeypatch):
+        called = {}
+
+        async def fake_list_equipments(*args, **kwargs):
+            called.update(kwargs)
+            return {
+                "total": 1,
+                "items": [
+                    {
+                        "id": "eq-1",
+                        "modality": "MR",
+                        "manufacturer": "Philips",
+                        "model": None,
+                        "state": "Estimado",
+                        "facility_name": "Hospital Central",
+                        "country": "Panamá",
+                        "age_years": 4,
+                        "has_issue": False,
+                    }
+                ],
+            }
+
+        monkeypatch.setattr(assistant.engine, "list_equipments", fake_list_equipments)
+        client = _ScriptedClient(["Hay 1 equipo sin modelo registrado."])
+        ctx = assistant.SimpleNamespace(equipment_refs=[])
+        res = run(assistant._try_list_fast_path(client, "ok filtra por equipo sin modelo", ctx))
+        assert res is not None
+        assert called.get("unnamed") is True
+        assert len(res.events) == 2
+        assert res.events[1]["type"] == "answer"
+        assert res.events[1]["equipment"][0]["id"] == "eq-1"
