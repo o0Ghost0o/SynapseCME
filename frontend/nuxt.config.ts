@@ -28,10 +28,22 @@ export default defineNuxtConfig({
       orientation: 'portrait',
       theme_color: '#f4f6fb',
       background_color: '#f4f6fb',
-      start_url: '/chat',
+      start_url: '/',
+      scope: '/',
+      id: '/',
       icons: [
-        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+        {
+          src: '/icons/icon-192.png',
+          sizes: '192x192',
+          type: 'image/png',
+          purpose: 'any',
+        },
+        {
+          src: '/icons/icon-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any',
+        },
         {
           src: '/icons/icon-maskable-512.png',
           sizes: '512x512',
@@ -90,6 +102,7 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-title', content: 'SynapseCME' },
       ],
       link: [
+        { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' },
         { rel: 'apple-touch-icon', href: '/icons/icon-192.png' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
