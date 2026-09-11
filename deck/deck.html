@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SynapseCME — Inteligencia Soberana para la Base Instalada Hospitalaria</title>
+  <meta name="description" content="Presentación interactiva de SynapseCME: Plataforma descentralizada y agent-first para la captura e inteligencia de base instalada médica con inferencia 100% local en hardware RTX.">
+  <style>
+    /* ==========================================================================
+       RESET & THEME VARIABLES
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-dark: #030712;
+      --bg-surface: #0b1329;
+      --bg-card: rgba(15, 23, 42, 0.78);
+      --bg-card-hover: rgba(30, 41, 59, 0.88);
+      --border-subtle: rgba(56, 189, 248, 0.18);
+      --border-active: #00f2fe;
+      
+      --cyan-neon: #00f2fe;
+      --cyan-bright: #38bdf8;
+      --cyan-glow: rgba(0, 242, 254, 0.35);
+      
+      --blue-accent: #3b82f6;
+      --emerald-accent: #10b981;
+      --amber-accent: #f59e0b;
+      --rose-accent: #f43f5e;
+      
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --transition-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      user-select: none;
+    }
+
+    /* Background Canvas */
+    #synapse-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0.65;
+    }
+
+    /* Ambient Radial Glows */
+    .ambient-glow {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.25;
+      animation: pulseGlow 12s ease-in-out infinite alternate;
+    }
+    .ambient-glow-1 {
+      top: -15%;
+      right: -10%;
+      width: 70vw;
+      height: 70vw;
+      background: radial-gradient(circle, #0284c7 0%, rgba(2, 132, 199, 0) 70%);
+    }
+    .ambient-glow-2 {
+      bottom: -20%;
+      left: -15%;
+      width: 65vw;
+      height: 65vw;
+      background: radial-gradient(circle, #0f766e 0%, rgba(15, 118, 110, 0) 70%);
+    }
+    @keyframes pulseGlow {
+      0% { transform: scale(1) translate(0, 0); opacity: 0.2; }
+      50% { transform: scale(1.08) translate(-2%, 3%); opacity: 0.32; }
+      100% { transform: scale(0.95) translate(3%, -2%); opacity: 0.22; }
+    }
+
+    /* Deck Master Container */
+    #deck-viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .slide-wrapper {
+      position: relative;
+      width: 96vw;
+      max-width: 1560px;
+      height: 86vh;
+      max-height: 880px;
+      aspect-ratio: 16 / 9;
+      perspective: 1200px;
+    }
+
+    /* Slide Card */
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(2, 6, 23, 0.94) 100%);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 24px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), 0 0 40px -10px var(--cyan-glow);
+      padding: 44px 56px;
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.96) translateY(24px);
+      transition: all 0.6s var(--transition-smooth);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+      z-index: 20;
+    }
+
+    .slide.prev {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(1.04) translateY(-24px);
+    }
+
+    /* Top Slide Header */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-shrink: 0;
+    }
+
+    .slide-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cyan-neon);
+    }
+    .slide-eyebrow::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--cyan-neon);
+      box-shadow: 0 0 8px var(--cyan-neon);
+    }
+
+    .slide-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+    }
+    .slide-brand span {
+      color: var(--cyan-neon);
+    }
+
+    /* Slide Titles */
+    .slide-title {
+      font-size: 2.5rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    .slide-title span {
+      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 60%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .slide-subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 880px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    /* Slide Body (Flex growth area) */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 0;
+    }
+
+    /* ==========================================================================
+       SPECIFIC SLIDE LAYOUTS
+       ========================================================================== */
+
+    /* Slide 1: Cover */
+    .slide-cover {
+      padding: 0;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      position: relative;
+    }
+    .cover-banner-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 24px;
+    }
+    .cover-banner-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      filter: contrast(1.05) brightness(1.02);
+      transition: transform 12s ease-out;
+    }
+    .slide.active .cover-banner-img {
+      transform: scale(1.03);
+    }
+    .cover-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.75) 45%, rgba(2, 6, 23, 0.15) 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 56px 64px;
+      z-index: 2;
+    }
+    .cover-tag-bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .cover-main-content {
+      max-width: 760px;
+    }
+    .cover-title {
+      font-size: 4rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+      margin-bottom: 18px;
+      color: #fff;
+    }
+    .cover-title .cme-accent {
+      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .cover-desc {
+      font-size: 1.5rem;
+      font-weight: 500;
+      color: var(--cyan-bright);
+      margin-bottom: 16px;
+      line-height: 1.35;
+    }
+    .cover-subtext {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .cover-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .cover-pill {
+      padding: 8px 18px;
+      background: rgba(14, 165, 233, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(8px);
+    }
+    .cover-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 20px;
+    }
+    .cover-presenters {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .cover-presenters strong {
+      color: #fff;
+      font-weight: 600;
+    }
+    .cover-nav-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+      background: rgba(15, 23, 42, 0.6);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .kbd-chip {
+      background: #1e293b;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #334155;
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--cyan-neon);
+    }
+
+    /* Cards Grid (Slides 2, 5, 7) */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      height: 100%;
+      align-items: stretch;
+    }
+
+    .info-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 32px 28px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.35s ease;
+    }
+    .info-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+      transition: all 0.35s ease;
+    }
+    .info-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(56, 189, 248, 0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.5), 0 0 20px -5px var(--cyan-glow);
+    }
+    .info-card:hover::before {
+      background: linear-gradient(90deg, var(--cyan-neon), var(--blue-accent));
+    }
+
+    .card-icon-box {
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      background: rgba(14, 165, 233, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      margin-bottom: 22px;
+      flex-shrink: 0;
+    }
+    .card-icon-box.rose {
+      background: rgba(244, 63, 94, 0.12);
+      border-color: rgba(244, 63, 94, 0.3);
+    }
+    .card-icon-box.amber {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .card-icon-box.emerald {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .card-icon-box.gold {
+      background: rgba(234, 179, 8, 0.15);
+      border-color: rgba(234, 179, 8, 0.4);
+    }
+    .card-icon-box.cyan {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: rgba(0, 242, 254, 0.35);
+    }
+
+    .card-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+    }
+    .card-text {
+      font-size: 0.98rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      flex-grow: 1;
+    }
+    .card-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 18px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--cyan-neon);
+    }
+
+    /* Comparison Split (Slide 3) */
+    .split-comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      height: 100%;
+      align-items: stretch;
+    }
+    .comp-col {
+      background: var(--bg-card);
+      border-radius: 20px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-subtle);
+      position: relative;
+    }
+    .comp-col.bad {
+      border-color: rgba(244, 63, 94, 0.3);
+      background: linear-gradient(180deg, rgba(244, 63, 94, 0.05) 0%, rgba(15, 23, 42, 0.8) 100%);
+    }
+    .comp-col.good {
+      border-color: rgba(0, 242, 254, 0.4);
+      background: linear-gradient(180deg, rgba(0, 242, 254, 0.08) 0%, rgba(15, 23, 42, 0.85) 100%);
+      box-shadow: 0 10px 30px -10px var(--cyan-glow);
+    }
+    .comp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 20px;
+      align-self: flex-start;
+    }
+    .comp-col.bad .comp-badge {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+    .comp-col.good .comp-badge {
+      background: rgba(0, 242, 254, 0.15);
+      color: var(--cyan-neon);
+      border: 1px solid rgba(0, 242, 254, 0.4);
+    }
+    .comp-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .comp-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      font-size: 1rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .comp-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .comp-list li .icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .audio-demo-box {
+      margin-top: auto;
+      padding: 16px 20px;
+      background: rgba(2, 6, 23, 0.7);
+      border: 1px dashed rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      font-style: italic;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .audio-waves {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 24px;
+    }
+    .wave-bar {
+      width: 3px;
+      background: var(--cyan-neon);
+      border-radius: 2px;
+      animation: wavePulse 1.2s ease-in-out infinite alternate;
+    }
+    .wave-bar:nth-child(2) { height: 16px; animation-delay: 0.2s; }
+    .wave-bar:nth-child(3) { height: 24px; animation-delay: 0.4s; }
+    .wave-bar:nth-child(4) { height: 12px; animation-delay: 0.1s; }
+    .wave-bar:nth-child(5) { height: 20px; animation-delay: 0.3s; }
+    @keyframes wavePulse {
+      0% { transform: scaleY(0.3); }
+      100% { transform: scaleY(1); }
+    }
+
+    /* Step Pipeline (Slide 4) */
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      height: 100%;
+      position: relative;
+    }
+    .pipeline-grid::after {
+      content: '';
+      position: absolute;
+      top: 50px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, #0ea5e9, #00f2fe, #10b981);
+      z-index: 1;
+      opacity: 0.4;
+    }
+    .pipeline-step {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 28px 22px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 2;
+      transition: all 0.35s ease;
+    }
+    .pipeline-step:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--cyan-neon);
+      transform: translateY(-6px);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.4), 0 0 15px var(--cyan-glow);
+    }
+    .step-num {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #0f172a;
+      border: 2px solid var(--cyan-neon);
+      color: var(--cyan-neon);
+      font-weight: 800;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 0 0 12px var(--cyan-glow);
+    }
+    .step-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .step-body {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+    .step-tag {
+      margin-top: auto;
+      padding-top: 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan-bright);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Stack Architecture (Slide 6) */
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 20px;
+      height: 100%;
+    }
+    .stack-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 24px 26px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.3s ease;
+    }
+    .stack-block:hover {
+      border-color: var(--cyan-neon);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+    .stack-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .stack-block-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .stack-tech-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--cyan-bright);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .stack-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .stack-chip {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid #334155;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #cbd5e1;
+      font-weight: 500;
+    }
+
+    /* Slide 8: Conclusion & Contact */
+    .conclusion-layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 36px;
+      height: 100%;
+      align-items: center;
+    }
+    .conclusion-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .conclusion-quote {
+      font-size: 2.1rem;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #fff;
+      margin-bottom: 24px;
+      letter-spacing: -0.02em;
+    }
+    .conclusion-quote span {
+      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .conclusion-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .stat-box {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 18px 14px;
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--cyan-neon);
+      margin-bottom: 4px;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .contact-card {
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(2, 6, 23, 0.98) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 20px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px var(--cyan-glow);
+    }
+    .contact-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(0, 242, 254, 0.1);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      color: var(--cyan-neon);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      align-self: flex-start;
+    }
+    .contact-entity {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #fff;
+    }
+    .contact-person {
+      font-size: 1.05rem;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    .contact-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 1rem;
+      color: #94a3b8;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .contact-item:hover {
+      color: var(--cyan-neon);
+    }
+    .contact-item .ci-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: var(--cyan-neon);
+      flex-shrink: 0;
+    }
+
+    /* ==========================================================================
+       BOTTOM CONTROL BAR & OVERLAYS
+       ========================================================================== */
+    #deck-controls {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 8px 18px;
+      border-radius: 9999px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      transition: opacity 0.3s ease;
+    }
+
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    .ctrl-btn:hover {
+      color: var(--cyan-neon);
+      background: rgba(56, 189, 248, 0.15);
+    }
+    .ctrl-btn.active {
+      color: var(--cyan-neon);
+      background: rgba(0, 242, 254, 0.2);
+      border: 1px solid rgba(0, 242, 254, 0.35);
+    }
+
+    .slide-counter {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-main);
+      min-width: 60px;
+      text-align: center;
+    }
+    .slide-counter span {
+      color: var(--cyan-neon);
+    }
+
+    .ctrl-divider {
+      width: 1px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Top Progress Bar */
+    #progress-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      z-index: 1000;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 12.5%;
+      background: linear-gradient(90deg, #0ea5e9, #00f2fe, #38bdf8);
+      box-shadow: 0 0 12px var(--cyan-neon);
+      transition: width 0.4s ease;
+    }
+
+    /* Presenter Notes Drawer */
+    #notes-drawer {
+      position: fixed;
+      bottom: 84px;
+      right: 32px;
+      width: 440px;
+      max-height: 480px;
+      background: rgba(11, 19, 41, 0.95);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--border-active);
+      border-radius: 20px;
+      padding: 24px;
+      z-index: 150;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px var(--cyan-glow);
+      display: none;
+      flex-direction: column;
+      animation: fadeInSlide 0.3s ease forwards;
+    }
+    #notes-drawer.open {
+      display: flex;
+    }
+    @keyframes fadeInSlide {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .notes-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .notes-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan-neon);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .notes-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .notes-content {
+      overflow-y: auto;
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      line-height: 1.6;
+      max-height: 380px;
+      padding-right: 8px;
+    }
+    .notes-content h4 {
+      color: var(--cyan-bright);
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+    .notes-content p {
+      margin-bottom: 12px;
+    }
+    .notes-content ul {
+      margin-left: 20px;
+      margin-bottom: 12px;
+    }
+    .notes-timer {
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    /* Slide Overview Modal (Grid View) */
+    #overview-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 500;
+      display: none;
+      padding: 40px;
+      overflow-y: auto;
+    }
+    #overview-modal.open {
+      display: block;
+    }
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      max-width: 1400px;
+      margin: 40px auto 0;
+    }
+    .overview-card {
+      aspect-ratio: 16 / 9;
+      background: var(--bg-surface);
+      border: 2px solid #1e293b;
+      border-radius: 14px;
+      padding: 16px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .overview-card:hover {
+      border-color: var(--cyan-neon);
+      transform: scale(1.04);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6), 0 0 15px var(--cyan-glow);
+    }
+    .overview-card.current {
+      border-color: var(--cyan-neon);
+      box-shadow: 0 0 20px var(--cyan-glow);
+    }
+    .overview-card-num {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cyan-neon);
+    }
+    .overview-card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: #000 !important;
+        overflow: visible !important;
+      }
+      #synapse-canvas, .ambient-glow, #deck-controls, #progress-container, #notes-drawer, #overview-modal {
+        display: none !important;
+      }
+      #deck-viewport {
+        display: block !important;
+        height: auto !important;
+      }
+      .slide-wrapper {
+        width: 100% !important;
+        height: auto !important;
+      }
+      .slide {
+        position: relative !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        transform: none !important;
+        page-break-after: always !important;
+        height: 100vh !important;
+        border-radius: 0 !important;
+        border: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Real-time Progress Bar -->
+  <div id="progress-container">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- Ambient Dynamic Glows -->
+  <div class="ambient-glow ambient-glow-1"></div>
+  <div class="ambient-glow ambient-glow-2"></div>
+
+  <!-- Interactive Synapse Particle Canvas -->
+  <canvas id="synapse-canvas"></canvas>
+
+  <!-- Master Viewport -->
+  <main id="deck-viewport">
+    <div class="slide-wrapper">
+
+      <!-- ===================================================================
+           SLIDE 1: COVER / HERO (Using synapse-banner.svg)
+           =================================================================== -->
+      <section class="slide slide-cover active" data-slide="1">
+        <div class="cover-banner-wrapper">
+          <img src="synapse-banner.svg" alt="SynapseCME Cover Banner" class="cover-banner-img">
+        </div>
+        <div class="cover-overlay">
+          <div class="cover-tag-bar">
+            <span class="slide-eyebrow">Sovereign Intelligence at the Edge</span>
+            <span class="slide-eyebrow" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #34d399;">
+              Offline-First · Agent-First
+            </span>
+          </div>
+
+          <div class="cover-main-content">
+            <h1 class="cover-title">Synapse<span class="cme-accent">CME</span></h1>
+            <h2 class="cover-desc">Inteligencia Soberana para la Base Instalada Hospitalaria</h2>
+            <p class="cover-subtext">
+              Convierte observaciones de campo no estructuradas en un Knowledge Graph vivo (GraphRAG) con inferencia 100% local, cero dependencia en la nube y privacidad hospitalaria absoluta.
+            </p>
+
+            <div class="cover-pills">
+              <div class="cover-pill">⚡ QVAC Psy (MedPsy)</div>
+              <div class="cover-pill">🌐 GraphRAG + Neo4j</div>
+              <div class="cover-pill">🛡️ 100% Offline-First (Nuxt 4)</div>
+              <div class="cover-pill">🚀 NVIDIA RTX Edge</div>
+            </div>
+          </div>
+
+          <div class="cover-footer">
+            <div class="cover-presenters">
+              Presentado por: <strong>Pedro Carreras & Alek Rutherford</strong> · <span style="color: var(--cyan-neon);">Vertex Data Centers</span> (vertexdc.com)
+            </div>
+            <div class="cover-nav-hint">
+              Presiona <span class="kbd-chip">→</span> o <span class="kbd-chip">Espacio</span> para comenzar · <span class="kbd-chip">P</span> Notas
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 2: EL PROBLEMA (PUNTO CIEGO DE LA INFRAESTRUCTURA MÉDICA)
+           =================================================================== -->
+      <section class="slide" data-slide="2">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Diagnóstico de la Industria</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">El Punto Ciego de la <span>Infraestructura Médica</span></h2>
+        <p class="slide-subtitle">
+          Cada día, ingenieros de servicio y especialistas visitan hospitales y operan equipos críticos. Sin embargo, el conocimiento se pierde en notas personales de WhatsApp o en la memoria.
+        </p>
+
+        <div class="slide-body">
+          <div class="grid-3">
+            <!-- Problem 1 -->
+            <div class="info-card">
+              <div class="card-icon-box rose">📝</div>
+              <h3 class="card-title">Fricción Manual Extrema</h3>
+              <p class="card-text">
+                Completar formularios corporativos de 20 campos tras una guardia de 12 horas genera fatiga e inconsistencia. El 70% del parque instalado queda desactualizado o indocumentado.
+              </p>
+              <div class="card-badge" style="color: #fb7185;">Pérdida de Información</div>
+            </div>
+
+            <!-- Problem 2 -->
+            <div class="info-card">
+              <div class="card-icon-box amber">📶</div>
+              <h3 class="card-title">Cero Conectividad (Búnkeres)</h3>
+              <p class="card-text">
+                Los resonadores magnéticos (MR), tomógrafos (CT) y aceleradores lineales están en sótanos y búnkeres con muros de concreto y plomo. Las aplicaciones en la nube se congelan y fallan.
+              </p>
+              <div class="card-badge" style="color: #fbbf24;">Aislamiento Físico</div>
+            </div>
+
+            <!-- Problem 3 -->
+            <div class="info-card">
+              <div class="card-icon-box rose">🔒</div>
+              <h3 class="card-title">Privacidad Innegociable</h3>
+              <p class="card-text">
+                Los datos de equipamiento médico y contratos corporativos son ultra-sensibles. <strong>No pueden ni deben</strong> transmitirse a APIs de nube pública por leyes de soberanía y confidencialidad.
+              </p>
+              <div class="card-badge" style="color: #fb7185;">Riesgo Regulatorio</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 3: LA SOLUCIÓN (AGENT-FIRST & SPEECH-DRIVEN)
+           =================================================================== -->
+      <section class="slide" data-slide="3">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Propuesta de Valor</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">La Solución: <span>Habla, no escribas</span></h2>
+        <p class="slide-subtitle">
+          SynapseCME sustituye la burocracia por captura conversacional natural. El agente extrae la estructura directamente al grafo sin requerir internet.
+        </p>
+
+        <div class="slide-body">
+          <div class="split-comparison">
+            <!-- Old Way -->
+            <div class="comp-col bad">
+              <span class="comp-badge">El Pasado (Fricción Tradicional)</span>
+              <h3 class="comp-title">Formularios Rígidos & Nube</h3>
+              <ul class="comp-list">
+                <li><span class="icon">❌</span> Formularios de 15 a 25 campos obligatorios en portales lentos.</li>
+                <li><span class="icon">❌</span> Requiere conexión constante a internet (imposible en sótanos).</li>
+                <li><span class="icon">❌</span> Retrasos de semanas para actualizar el inventario de equipamiento.</li>
+                <li><span class="icon">❌</span> Datos médicos expuestos a terceros en nubes públicas.</li>
+              </ul>
+            </div>
+
+            <!-- New Way -->
+            <div class="comp-col good">
+              <span class="comp-badge">Con SynapseCME (Agent-First)</span>
+              <h3 class="comp-title">Dictado Natural + Evidencia</h3>
+              <ul class="comp-list">
+                <li><span class="icon">✅</span> <strong>10 segundos:</strong> Dicta o escribe como hablas con un colega.</li>
+                <li><span class="icon">✅</span> <strong>Offline-First:</strong> Guarda en cola local y sincroniza atómicamente al salir.</li>
+                <li><span class="icon">✅</span> <strong>Evidencia Visual:</strong> Adjunta fotos comprimidas en el dispositivo.</li>
+                <li><span class="icon">✅</span> <strong>Consenso Automático:</strong> El grafo detecta duplicados y valida datos.</li>
+              </ul>
+
+              <div class="audio-demo-box">
+                <div class="audio-waves">
+                  <div class="wave-bar"></div>
+                  <div class="wave-bar"></div>
+                  <div class="wave-bar"></div>
+                  <div class="wave-bar"></div>
+                  <div class="wave-bar"></div>
+                </div>
+                <span>"Visité Hospital Aurora, vi 2 tomógrafos GE Revolution, uno parece de hace 5 años..."</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 4: DE LA VOZ AL GRAFO (ARQUITECTURA DE INFERENCIA)
+           =================================================================== -->
+      <section class="slide" data-slide="4">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Pipeline Técnico</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">De la Voz al Grafo: <span>Cómo Funciona</span></h2>
+        <p class="slide-subtitle">
+          Flujo de inferencia extremo a extremo corriendo sobre hardware local edge sin enviar un solo byte a la nube.
+        </p>
+
+        <div class="slide-body">
+          <div class="pipeline-grid">
+            <!-- Step 1 -->
+            <div class="pipeline-step">
+              <div class="step-num">01</div>
+              <h3 class="step-title">Captura Offline</h3>
+              <p class="step-body">
+                Nuxt 4 PWA encola audio, texto y fotos comprimidas en una cola transaccional local resiliente. Sin pérdida de datos en búnkeres.
+              </p>
+              <div class="step-tag">IndexedDB · Capacitor</div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="pipeline-step">
+              <div class="step-num">02</div>
+              <h3 class="step-title">Inferencia Edge</h3>
+              <p class="step-body">
+                Audio transcrito localmente con Faster-Whisper. El texto entra a <strong>MedPsy (Q4_K_M)</strong> vía <code>@qvac/sdk</code> en NVIDIA RTX.
+              </p>
+              <div class="step-tag">QVAC SDK · MedPsy</div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="pipeline-step">
+              <div class="step-num">03</div>
+              <h3 class="step-title">Tool Calling & Filtros</h3>
+              <p class="step-body">
+                El agente extrae modalidad (MR, CT, XR, UL), fabricante, modelo estimado, antigüedad y centro hospitalario en formato JSON tipado.
+              </p>
+              <div class="step-tag">FastAPI · Pydantic</div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="pipeline-step">
+              <div class="step-num">04</div>
+              <h3 class="step-title">GraphRAG & Consenso</h3>
+              <p class="step-body">
+                Neo4j cruza reportes en tiempo real. Nuevas observaciones refinan y elevan el estado del equipo: <em>Desconocido ➔ Estimado ➔ Confirmado</em>.
+              </p>
+              <div class="step-tag">Neo4j · Cypher Graph</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 5: DOMINIO DE LOS 3 RETOS
+           =================================================================== -->
+      <section class="slide" data-slide="5">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Alineación Estratégica</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">Dominio de los <span>3 Retos Clave</span></h2>
+        <p class="slide-subtitle">
+          SynapseCME fue concebido desde el primer commit para responder con excelencia a cada dimensión del desafío.
+        </p>
+
+        <div class="slide-body">
+          <div class="grid-3">
+            <!-- Reto 1: Philips -->
+            <div class="info-card">
+              <div class="card-icon-box gold">🏆</div>
+              <h3 class="card-title">Reto Philips (Base Instalada)</h3>
+              <p class="card-text">
+                Convierte el parque hospitalario en un <strong>inventario vivo 360°</strong>. Detecta equipos que superan su vida útil (7+ años) para renovaciones comerciales y alerta sobre anomalías de servicio al instante.
+              </p>
+              <div class="card-badge" style="color: #eab308;">Impacto de Negocio</div>
+            </div>
+
+            <!-- Reto 2: Tether QVAC -->
+            <div class="info-card">
+              <div class="card-icon-box cyan">🏆</div>
+              <h3 class="card-title">Reto Tether (QVAC Psy)</h3>
+              <p class="card-text">
+                Integración de primer nivel con <code>@qvac/sdk</code> y el modelo especializado <strong>MedPsy</strong>. Inferencia acelerada por GPU local (RTX) con telemetría en tiempo real: TTFT &lt; 350ms y throughput óptimo.
+              </p>
+              <div class="card-badge" style="color: var(--cyan-neon);">Excelencia Técnica Edge</div>
+            </div>
+
+            <!-- Reto 3: Sovereign Edge -->
+            <div class="info-card">
+              <div class="card-icon-box emerald">🏆</div>
+              <h3 class="card-title">Reto Sovereign Intelligence</h3>
+              <p class="card-text">
+                Solución total para entornos desconectados. <strong>Cero APIs en la nube</strong>. Los datos hospitalarios de alta confidencialidad jamás cruzan fronteras ni servidores de terceros.
+              </p>
+              <div class="card-badge" style="color: #34d399;">Soberanía y Privacidad</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 6: ARQUITECTURA TÉCNICA Y STACK
+           =================================================================== -->
+      <section class="slide" data-slide="6">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Deep Dive de Ingeniería</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">Stack <span>100% Local & Descentralizado</span></h2>
+        <p class="slide-subtitle">
+          Arquitectura modular de alto rendimiento diseñada para resiliencia industrial y escalabilidad soberana.
+        </p>
+
+        <div class="slide-body">
+          <div class="stack-grid">
+            <!-- Frontend -->
+            <div class="stack-block">
+              <div>
+                <div class="stack-block-header">
+                  <h3 class="stack-block-title">Cliente PWA & Móvil</h3>
+                  <span class="stack-tech-badge">Offline-First</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5;">
+                  Interfaz Nuxt 4 ultra reactiva con soporte Capacitor para Android e iOS. Encolado transaccional local con sincronización por lotes.
+                </p>
+              </div>
+              <div class="stack-chips">
+                <span class="stack-chip">Nuxt 4 / Vue 3</span>
+                <span class="stack-chip">Tailwind CSS</span>
+                <span class="stack-chip">Pinia Queue</span>
+                <span class="stack-chip">Capacitor</span>
+              </div>
+            </div>
+
+            <!-- Inferencia Edge -->
+            <div class="stack-block">
+              <div>
+                <div class="stack-block-header">
+                  <h3 class="stack-block-title">Inferencia Edge Local</h3>
+                  <span class="stack-tech-badge">QVAC Core</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5;">
+                  Pipeline de inferencia con MedPsy (Q4_K_M) corriendo sobre hardware NVIDIA RTX. Tool calling estructurado y Faster-Whisper.
+                </p>
+              </div>
+              <div class="stack-chips">
+                <span class="stack-chip">@qvac/sdk</span>
+                <span class="stack-chip">MedPsy (8B Q4)</span>
+                <span class="stack-chip">Faster-Whisper</span>
+                <span class="stack-chip">CUDA / RTX</span>
+              </div>
+            </div>
+
+            <!-- Gateway Backend -->
+            <div class="stack-block">
+              <div>
+                <div class="stack-block-header">
+                  <h3 class="stack-block-title">Gateway API & Agentes</h3>
+                  <span class="stack-tech-badge">FastAPI</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5;">
+                  Backend Python asíncrono con enrutamiento de intención inteligente (captura vs consulta de catálogo), compresión de evidencias y auditoría.
+                </p>
+              </div>
+              <div class="stack-chips">
+                <span class="stack-chip">Python 3.12</span>
+                <span class="stack-chip">FastAPI</span>
+                <span class="stack-chip">Pydantic v2</span>
+                <span class="stack-chip">Uvicorn ASGI</span>
+              </div>
+            </div>
+
+            <!-- Capa de Datos -->
+            <div class="stack-block">
+              <div>
+                <div class="stack-block-header">
+                  <h3 class="stack-block-title">Knowledge Graph & Datos</h3>
+                  <span class="stack-tech-badge">GraphRAG</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5;">
+                  Neo4j para relaciones topológicas y consenso de equipos. PostgreSQL para trazabilidad transaccional inmutable de cada observación.
+                </p>
+              </div>
+              <div class="stack-chips">
+                <span class="stack-chip">Neo4j GraphDB</span>
+                <span class="stack-chip">Cypher Engine</span>
+                <span class="stack-chip">PostgreSQL</span>
+                <span class="stack-chip">SQLAlchemy</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 7: VISIÓN DE FUTURO Y ROADMAP
+           =================================================================== -->
+      <section class="slide" data-slide="7">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Evolución Tecnológica</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+        <h2 class="slide-title">El Futuro: <span>Ecosistema Corporativo</span></h2>
+        <p class="slide-subtitle">
+          SynapseCME no es un prototipo efímero; es el cimiento de un sistema operativo hospitalario descentralizado.
+        </p>
+
+        <div class="slide-body">
+          <div class="grid-3">
+            <!-- Roadmap 1 -->
+            <div class="info-card">
+              <div class="card-icon-box emerald">✍️</div>
+              <h3 class="card-title">Firmas Digitales en Actas</h3>
+              <p class="card-text">
+                Registro de procesos <em>Take-off</em> y <em>Handover</em> con firma criptográfica en el grafo, garantizando cadena de custodia inalterable en la entrega de salas.
+              </p>
+              <div class="card-badge" style="color: #34d399;">Fase Inmediata</div>
+            </div>
+
+            <!-- Roadmap 2 -->
+            <div class="info-card">
+              <div class="card-icon-box cyan">🧠</div>
+              <h3 class="card-title">Clustering & Predicción</h3>
+              <p class="card-text">
+                Embeddings locales para agrupar centros de salud por perfiles de desgaste y predecir fallos de tubo de rayos X o bobinas antes del colapso.
+              </p>
+              <div class="card-badge" style="color: var(--cyan-neon);">Machine Learning Edge</div>
+            </div>
+
+            <!-- Roadmap 3 -->
+            <div class="info-card">
+              <div class="card-icon-box amber">🛡️</div>
+              <h3 class="card-title">Jerarquías de Auditoría</h3>
+              <p class="card-text">
+                Flujos de aprobación por niveles para directores biomédicos con registro de consenso multi-usuario y exportación formal a sistemas ERP.
+              </p>
+              <div class="card-badge" style="color: #fbbf24;">Governance Empresarial</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           SLIDE 8: CONCLUSIÓN Y CONTACTO
+           =================================================================== -->
+      <section class="slide" data-slide="8">
+        <div class="slide-header">
+          <span class="slide-eyebrow">Cierre & Contacto</span>
+          <div class="slide-brand">Synapse<span>CME</span></div>
+        </div>
+
+        <div class="slide-body">
+          <div class="conclusion-layout">
+            <!-- Left statement -->
+            <div class="conclusion-left">
+              <h2 class="conclusion-quote">
+                "La mejor IA corporativa no está en la nube.<br>
+                Vive en el borde, <span>es soberana</span> y escucha a tus ingenieros."
+              </h2>
+              <p style="color: var(--text-muted); font-size: 1.15rem; line-height: 1.6; margin-bottom: 24px;">
+                SynapseCME elimina el abismo entre las observaciones en el quirófano y las decisiones en la junta directiva.
+              </p>
+
+              <div class="conclusion-stats">
+                <div class="stat-box">
+                  <div class="stat-num">10x</div>
+                  <div class="stat-label">Más Rápido que Formularios</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-num">0%</div>
+                  <div class="stat-label">Datos Enviados a la Nube</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-num">100%</div>
+                  <div class="stat-label">Resiliencia en Búnkeres</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right contact card -->
+            <div class="contact-card">
+              <span class="contact-badge">Equipo Fundador</span>
+              <div>
+                <h3 class="contact-entity">Vertex Data Centers</h3>
+                <p class="contact-person"><strong>Pedro Carreras</strong> & <strong>Alek Rutherford</strong></p>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <a href="https://vertexdc.com" target="_blank" class="contact-item">
+                  <div class="ci-icon">🌐</div>
+                  <span>vertexdc.com</span>
+                </a>
+                <a href="mailto:pcarreras@vertexdc.com" class="contact-item">
+                  <div class="ci-icon">✉️</div>
+                  <span>pcarreras@vertexdc.com</span>
+                </a>
+                <a href="https://wa.me/50761610410" target="_blank" class="contact-item">
+                  <div class="ci-icon">📱</div>
+                  <span>+507 6161-0410 (WhatsApp)</span>
+                </a>
+              </div>
+
+              <div style="margin-top: 10px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 12px; color: var(--text-dim);">
+                Proyecto desarrollado para el Hackathon Sovereign Edge AI · Philips & Tether QVAC Psy.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ===================================================================
+       BOTTOM FLOATING CONTROLS
+       =================================================================== -->
+  <nav id="deck-controls">
+    <button class="ctrl-btn" id="btn-prev" title="Anterior (← o Flecha Izq)">
+      <span>◀</span>
+    </button>
+    <div class="slide-counter" id="slide-counter">
+      <span id="curr-slide-num">01</span> / <span id="total-slide-num">08</span>
+    </div>
+    <button class="ctrl-btn" id="btn-next" title="Siguiente (→ o Espacio)">
+      <span>▶</span>
+    </button>
+
+    <div class="ctrl-divider"></div>
+
+    <button class="ctrl-btn" id="btn-notes" title="Notas del Presentador (P)">
+      <span>🎙️</span> Notas
+    </button>
+
+    <button class="ctrl-btn" id="btn-overview" title="Vista General (O / Esc)">
+      <span>🗂️</span> Overview
+    </button>
+
+    <button class="ctrl-btn" id="btn-fullscreen" title="Pantalla Completa (F)">
+      <span>⛶</span>
+    </button>
+  </nav>
+
+  <!-- ===================================================================
+       PRESENTER NOTES DRAWER
+       =================================================================== -->
+  <aside id="notes-drawer">
+    <div class="notes-header">
+      <div class="notes-title">
+        <span>🎙️</span> Notas del Orador
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="notes-timer" id="notes-timer">00:00</span>
+        <button class="notes-close" id="notes-close" title="Cerrar">✕</button>
+      </div>
+    </div>
+    <div class="notes-content" id="notes-content">
+      <!-- Dynamically filled per slide -->
+    </div>
+  </aside>
+
+  <!-- ===================================================================
+       OVERVIEW MATRIX MODAL
+       =================================================================== -->
+  <div id="overview-modal">
+    <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto;">
+      <h3 style="font-size: 1.5rem; font-weight: 800; color: #fff;">
+        Índice de Diapositivas <span style="color: var(--cyan-neon); font-size: 1.1rem;">(Selecciona para saltar)</span>
+      </h3>
+      <button class="ctrl-btn" id="overview-close" style="font-size: 1.2rem; color: #fff;">✕ Cerrar</button>
+    </div>
+    <div class="overview-grid" id="overview-grid">
+      <!-- Dynamically filled -->
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       DECK LOGIC & INTERACTION SCRIPT
+       =================================================================== -->
+  <script>
+    (function () {
+      'use strict';
+
+      // 1. Data & State
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const totalSlides = slides.length;
+      let currentIndex = 0;
+
+      const presenterNotes = {
+        1: `
+          <h4>Slide 1: Introducción & Portada</h4>
+          <p><strong>Apertura:</strong> Buenos días a todos. Somos Pedro Carreras y Alek Rutherford de Vertex Data Centers. Hoy les presentamos <strong>SynapseCME</strong>.</p>
+          <p><strong>Tesis central:</strong> La mejor IA corporativa no vive en nubes lejanas; vive en el borde, protege la soberanía de los datos y escucha la voz de los ingenieros de campo.</p>
+        `,
+        2: `
+          <h4>Slide 2: El Problema</h4>
+          <p><strong>Puntos clave:</strong></p>
+          <ul>
+            <li>Todos los días ingenieros visitan hospitales y ven equipos críticos.</li>
+            <li>Ese conocimiento vital se queda en chats de WhatsApp o notas personales en papel.</li>
+            <li><strong>Barrera 1 (Búnkeres):</strong> Los resonadores y tomógrafos están en sótanos blindados con plomo sin internet.</li>
+            <li><strong>Barrera 2 (Privacidad):</strong> Datos médicos confidenciales que por ley no pueden subirse a OpenAI o Claude.</li>
+          </ul>
+        `,
+        3: `
+          <h4>Slide 3: La Solución</h4>
+          <p><strong>Puntos clave:</strong></p>
+          <ul>
+            <li>SynapseCME es una plataforma <em>agent-first</em> y descentralizada.</li>
+            <li>En lugar de llenar formularios de 20 campos, el ingeniero simplemente saca su móvil y dicta: <em>"Visité el Hospital Aurora, vi 2 tomógrafos GE..."</em></li>
+            <li>Puede adjuntar una foto de la placa y guardar el teléfono. La app se encarga del resto.</li>
+          </ul>
+        `,
+        4: `
+          <h4>Slide 4: Pipeline De la Voz al Grafo</h4>
+          <p><strong>Flujo bajo el capó:</strong></p>
+          <ul>
+            <li><strong>Paso 1:</strong> La PWA encola audio, texto y foto en IndexedDB sin conexión.</li>
+            <li><strong>Paso 2:</strong> Al sincronizar, Whisper transcribe en local y <strong>MedPsy (Q4)</strong> procesa en GPU RTX vía QVAC SDK.</li>
+            <li><strong>Paso 3:</strong> Extracción tipada de entidades (modalidad, marca, antigüedad).</li>
+            <li><strong>Paso 4:</strong> Neo4j consolida el consenso ponderado (Desconocido ➔ Estimado ➔ Confirmado).</li>
+          </ul>
+        `,
+        5: `
+          <h4>Slide 5: Los 3 Retos del Hackathon</h4>
+          <p><strong>Alineación con el jurado:</strong></p>
+          <ul>
+            <li><strong>Philips:</strong> Eliminamos formularios. Mapeo continuo de la base instalada y detección de ciclos de renovación para ventas.</li>
+            <li><strong>Tether (QVAC Psy):</strong> Uso real del SDK de QVAC con modelo especializado de medicina, telemetría y tool calling.</li>
+            <li><strong>Sovereign Edge:</strong> Privacidad total y funcionamiento continuo en búnkeres desconectados.</li>
+          </ul>
+        `,
+        6: `
+          <h4>Slide 6: Stack Tecnológico</h4>
+          <p><strong>Arquitectura robusta:</strong></p>
+          <ul>
+            <li>Frontend: Nuxt 4, Capacitor, Tailwind CSS, cola offline transaccional.</li>
+            <li>Edge Gateway: FastAPI con validación Pydantic y enrutamiento inteligente.</li>
+            <li>Inferencia: QVAC SDK + MedPsy sobre hardware NVIDIA RTX.</li>
+            <li>Datos: Neo4j (GraphRAG) + PostgreSQL (auditoría inmutable).</li>
+          </ul>
+        `,
+        7: `
+          <h4>Slide 7: Futuro y Roadmap</h4>
+          <p><strong>Visión de producto:</strong></p>
+          <ul>
+            <li>Actas digitales con firma criptográfica en el grafo para Take-off y Handover.</li>
+            <li>Clustering de embeddings locales para predecir cuándo fallará un equipo.</li>
+            <li>Jerarquías y roles para jefaturas biomédicas.</li>
+          </ul>
+        `,
+        8: `
+          <h4>Slide 8: Conclusión & Contacto</h4>
+          <p><strong>Cierre con fuerza:</strong></p>
+          <p><em>"La mejor IA corporativa no está en la nube. Está en el borde, es soberana y escucha a tus ingenieros."</em></p>
+          <p>Agradecemos a los jueces y organizadores. Quedamos a su disposición para preguntas y demostración en vivo.</p>
+        `
+      };
+
+      // 2. Navigation Function
+      function goToSlide(index) {
+        if (index < 0) index = 0;
+        if (index >= totalSlides) index = totalSlides - 1;
+        if (index === currentIndex && slides[index].classList.contains('active')) return;
+
+        slides.forEach((slide, idx) => {
+          slide.classList.remove('active', 'prev');
+          if (idx < index) {
+            slide.classList.add('prev');
+          } else if (idx === index) {
+            slide.classList.add('active');
+          }
+        });
+
+        currentIndex = index;
+        updateUI();
+      }
+
+      function nextSlide() {
+        if (currentIndex < totalSlides - 1) {
+          goToSlide(currentIndex + 1);
+        }
+      }
+
+      function prevSlide() {
+        if (currentIndex > 0) {
+          goToSlide(currentIndex - 1);
+        }
+      }
+
+      // 3. UI Update Helpers
+      const currSlideNumEl = document.getElementById('curr-slide-num');
+      const totalSlideNumEl = document.getElementById('total-slide-num');
+      const progressBar = document.getElementById('progress-bar');
+      const notesContent = document.getElementById('notes-content');
+
+      totalSlideNumEl.textContent = String(totalSlides).padStart(2, '0');
+
+      function updateUI() {
+        const slideNum = currentIndex + 1;
+        currSlideNumEl.textContent = String(slideNum).padStart(2, '0');
+        const pct = ((slideNum) / totalSlides) * 100;
+        progressBar.style.width = pct + '%';
+
+        // Update presenter notes
+        if (presenterNotes[slideNum]) {
+          notesContent.innerHTML = presenterNotes[slideNum];
+        }
+
+        // Highlight overview card
+        document.querySelectorAll('.overview-card').forEach((card, idx) => {
+          card.classList.toggle('current', idx === currentIndex);
+        });
+      }
+
+      // 4. Presenter Notes Drawer
+      const notesDrawer = document.getElementById('notes-drawer');
+      const btnNotes = document.getElementById('btn-notes');
+      const notesClose = document.getElementById('notes-close');
+
+      function toggleNotes() {
+        notesDrawer.classList.toggle('open');
+        btnNotes.classList.toggle('active', notesDrawer.classList.contains('open'));
+      }
+
+      btnNotes.addEventListener('click', toggleNotes);
+      notesClose.addEventListener('click', toggleNotes);
+
+      // Presentation Timer
+      let startTime = Date.now();
+      const timerEl = document.getElementById('notes-timer');
+      setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const secs = String(elapsed % 60).padStart(2, '0');
+        timerEl.textContent = `${mins}:${secs}`;
+      }, 1000);
+
+      // 5. Overview Modal
+      const overviewModal = document.getElementById('overview-modal');
+      const overviewGrid = document.getElementById('overview-grid');
+      const btnOverview = document.getElementById('btn-overview');
+      const overviewClose = document.getElementById('overview-close');
+
+      const slideTitles = [
+        "01. Portada SynapseCME",
+        "02. El Punto Ciego",
+        "03. Habla, no escribas",
+        "04. Pipeline De Voz a Grafo",
+        "05. Dominio de los 3 Retos",
+        "06. Stack 100% Local",
+        "07. El Futuro / Roadmap",
+        "08. Cierre & Contacto"
+      ];
+
+      slideTitles.forEach((title, idx) => {
+        const card = document.createElement('div');
+        card.className = 'overview-card' + (idx === 0 ? ' current' : '');
+        card.innerHTML = `
+          <div class="overview-card-num">Slide ${String(idx + 1).padStart(2, '0')}</div>
+          <div class="overview-card-title">${title}</div>
+        `;
+        card.addEventListener('click', () => {
+          goToSlide(idx);
+          toggleOverview();
+        });
+        overviewGrid.appendChild(card);
+      });
+
+      function toggleOverview() {
+        overviewModal.classList.toggle('open');
+        btnOverview.classList.toggle('active', overviewModal.classList.contains('open'));
+      }
+
+      btnOverview.addEventListener('click', toggleOverview);
+      overviewClose.addEventListener('click', toggleOverview);
+
+      // 6. Fullscreen Toggle
+      const btnFullscreen = document.getElementById('btn-fullscreen');
+      btnFullscreen.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      });
+
+      // 7. Event Listeners (Keyboard & Clicks)
+      document.getElementById('btn-next').addEventListener('click', nextSlide);
+      document.getElementById('btn-prev').addEventListener('click', prevSlide);
+
+      window.addEventListener('keydown', (e) => {
+        if (overviewModal.classList.contains('open')) {
+          if (e.key === 'Escape' || e.key === 'o' || e.key === 'O') {
+            toggleOverview();
+          }
+          return;
+        }
+
+        switch (e.key) {
+          case 'ArrowRight':
+          case 'Space':
+          case 'PageDown':
+          case 'l':
+          case 'L':
+            e.preventDefault();
+            nextSlide();
+            break;
+          case 'ArrowLeft':
+          case 'PageUp':
+          case 'h':
+          case 'H':
+            e.preventDefault();
+            prevSlide();
+            break;
+          case 'Home':
+            e.preventDefault();
+            goToSlide(0);
+            break;
+          case 'End':
+            e.preventDefault();
+            goToSlide(totalSlides - 1);
+            break;
+          case 'p':
+          case 'P':
+            toggleNotes();
+            break;
+          case 'o':
+          case 'O':
+            toggleOverview();
+            break;
+          case 'f':
+          case 'F':
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+              document.exitFullscreen().catch(() => {});
+            }
+            break;
+          case 't':
+          case 'T':
+            startTime = Date.now();
+            break;
+        }
+      });
+
+      // Touch Swipe for Mobile / Tablets
+      let touchStartX = 0;
+      window.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      window.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].screenX;
+        const diff = touchStartX - touchEndX;
+        if (Math.abs(diff) > 50) {
+          if (diff > 0) nextSlide();
+          else prevSlide();
+        }
+      }, { passive: true });
+
+      // Initialize
+      updateUI();
+
+      // 8. Synapse Particle Canvas Background (Cyber Medical Synapse Animation)
+      const canvas = document.getElementById('synapse-canvas');
+      const ctx = canvas.getContext('2d');
+      let width, height;
+      let particles = [];
+      const particleCount = 45;
+      const connectionDistance = 140;
+
+      function resizeCanvas() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      class Particle {
+        constructor() {
+          this.x = Math.random() * width;
+          this.y = Math.random() * height;
+          this.vx = (Math.random() - 0.5) * 0.45;
+          this.vy = (Math.random() - 0.5) * 0.45;
+          this.radius = Math.random() * 2.2 + 1;
+          this.baseAlpha = Math.random() * 0.5 + 0.3;
+        }
+        update() {
+          this.x += this.vx;
+          this.y += this.vy;
+          if (this.x < 0 || this.x > width) this.vx *= -1;
+          if (this.y < 0 || this.y > height) this.vy *= -1;
+        }
+        draw() {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(0, 242, 254, ${this.baseAlpha})`;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = '#00f2fe';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      for (let i = 0; i < particleCount; i++) {
+        particles.push(new Particle());
+      }
+
+      function animateSynapses() {
+        ctx.clearRect(0, 0, width, height);
+
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].update();
+          particles[i].draw();
+
+          for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < connectionDistance) {
+              const alpha = (1 - dist / connectionDistance) * 0.35;
+              ctx.beginPath();
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+        requestAnimationFrame(animateSynapses);
+      }
+      animateSynapses();
+
+    })();
+  </script>
+</body>
+</html>
