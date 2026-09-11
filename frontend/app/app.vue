@@ -73,7 +73,7 @@ onMounted(() => {
   <VitePwaManifest />
   <div class="min-h-screen">
     <header v-if="route.path !== '/login' && !route.path.startsWith('/deck')" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
-      <nav class="relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+      <nav class="relative mx-auto flex w-full max-w-[1800px] items-center gap-3 px-4 sm:px-6 lg:px-8 py-3">
         <NuxtLink to="/dashboard" class="flex items-center gap-2.5">
           <img
             src="/logo.svg"
@@ -151,6 +151,20 @@ onMounted(() => {
         </div>
 
         <div class="hidden items-center gap-2 pl-2 lg:flex" :title="connectionDot.label">
+          <span class="glass-chip" :class="connectionDot.chipCls">
+            <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
+            {{ connectionDot.online ? 'En línea' : 'Sin conexión' }}
+          </span>
+        </div>
+
+        <div v-if="isAuthenticated && user" class="hidden items-center gap-2.5 border-l border-[#e3e8f2] pl-3 lg:flex">
+          <div class="text-right">
+            <p class="text-xs font-semibold leading-tight text-[#101828]">{{ user.full_name || user.username }}</p>
+            <p class="text-[10px] leading-tight text-[#7a8499]">{{ roleLabel(user.role) }}</p>
+          </div>
+          <span class="grid h-9 w-9 place-items-center rounded-full bg-[#e8eefc] font-display text-xs font-semibold text-[#1d63d8]">
+            {{ userInitials }}
+          </span>
           <button
             v-if="canInstall"
             class="btn-ghost px-3 py-1.5 text-xs"
@@ -159,28 +173,24 @@ onMounted(() => {
           >
             <Icon name="download" :size="13" /> Instalar app
           </button>
-          <span class="glass-chip" :class="connectionDot.chipCls">
-            <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
-            {{ connectionDot.online ? 'En línea' : 'Sin conexión' }}
-          </span>
-        </div>
-
-        <div v-if="isAuthenticated && user" class="hidden items-center gap-3 border-l border-[#e3e8f2] pl-3 lg:flex">
-          <div class="text-right">
-            <p class="text-xs font-semibold leading-tight text-[#101828]">{{ user.full_name || user.username }}</p>
-            <p class="text-[10px] leading-tight text-[#7a8499]">{{ roleLabel(user.role) }}</p>
-          </div>
-          <span class="grid h-9 w-9 place-items-center rounded-full bg-[#e8eefc] font-display text-xs font-semibold text-[#1d63d8]">
-            {{ userInitials }}
-          </span>
           <button class="btn-ghost px-3 py-1.5 text-xs" title="Cerrar sesión" @click="logout()">
             <Icon name="power" :size="13" /> Cerrar sesión
+          </button>
+        </div>
+
+        <div v-else-if="canInstall" class="hidden items-center border-l border-[#e3e8f2] pl-3 lg:flex">
+          <button
+            class="btn-ghost px-3 py-1.5 text-xs"
+            title="Instalar SynapseCME como aplicación"
+            @click="installApp"
+          >
+            <Icon name="download" :size="13" /> Instalar app
           </button>
         </div>
       </nav>
     </header>
 
-    <main :class="route.path.startsWith('/deck') ? 'p-0 m-0' : 'w-full px-7 pb-6 pt-6'">
+    <main :class="route.path.startsWith('/deck') ? 'p-0 m-0' : 'mx-auto w-full max-w-[1800px] px-4 sm:px-6 lg:px-8 pb-6 pt-6'">
       <NuxtPage />
     </main>
 
