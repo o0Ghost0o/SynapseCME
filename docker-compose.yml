@@ -109,7 +109,14 @@ services:
   # Env conventions verified against the pinned image's config (pydantic
   # settings): WHISPER__MODEL -> whisper.model, UVICORN__PORT -> port (8000),
   # DEFAULT_LANGUAGE -> default transcription language.
-  # First use downloads the model (~460 MB) into the persistent HF cache.
+  # The pinned image does NOT auto-download models: transcription 404s unless
+  # the model is already in the HF cache volume. Two ways to install it:
+  #   POST /v1/models (OpenAI-compatible pull) from inside the network, or
+  #   pre-seed the cache from the host (~460 MB for faster-whisper-small):
+  #     python -m venv <venv> && <venv>/pip install huggingface_hub
+  #     python -c "from huggingface_hub import snapshot_download; \
+  #       snapshot_download('Systran/faster-whisper-small', cache_dir='$VOLUMES_ROOT/stt/hub')"
+  # (verified on Windows: in-container HF downloads stall, host-side works).
   stt:
     image: ghcr.io/speaches-ai/speaches:latest-cpu
     container_name: synapse-stt
