@@ -702,6 +702,44 @@
       gap: 20px;
       box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 30px -10px var(--cyan-glow);
     }
+    .contact-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .contact-info-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vertex-logo-bubble {
+      width: 76px;
+      height: 76px;
+      min-width: 76px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #020617;
+      border: 2.5px solid rgba(0, 242, 254, 0.6);
+      box-shadow: 0 0 24px rgba(0, 242, 254, 0.35), 0 6px 16px rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .vertex-logo-bubble:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 32px rgba(0, 242, 254, 0.6), 0 8px 20px rgba(0, 0, 0, 0.85);
+    }
+    .vertex-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      display: block;
+      transform: scale(1.04);
+    }
     .contact-badge {
       display: inline-flex;
       align-items: center;
@@ -717,9 +755,10 @@
       align-self: flex-start;
     }
     .contact-entity {
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       font-weight: 800;
       color: #fff;
+      line-height: 1.2;
     }
     .contact-person {
       font-size: 1.05rem;
@@ -1421,10 +1460,15 @@
 
             <!-- Right contact card -->
             <div class="contact-card">
-              <span class="contact-badge">Equipo Fundador</span>
-              <div>
-                <h3 class="contact-entity">Vertex Development Center</h3>
-                <p class="contact-person"><strong>Pedro Carreras</strong> & <strong>Alek Rutherford</strong></p>
+              <div class="contact-header-row">
+                <div class="contact-info-block">
+                  <span class="contact-badge">Equipo Fundador</span>
+                  <h3 class="contact-entity">Vertex Development Center</h3>
+                  <p class="contact-person"><strong>Pedro Carreras</strong> & <strong>Alek Rutherford</strong></p>
+                </div>
+                <div class="vertex-logo-bubble" title="Vertex Development Center">
+                  <img src="vertex-logo.gif" alt="Vertex Development Center Logo" class="vertex-logo-img">
+                </div>
               </div>
 
               <div style="display: flex; flex-direction: column; gap: 14px;">
