@@ -235,97 +235,46 @@
     /* Slide 1: Cover */
     .slide-cover {
       padding: 0;
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       position: relative;
-    }
-    .cover-banner-wrapper {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      background: #020617;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
       overflow: hidden;
       border-radius: 24px;
+    }
+    .cover-banner-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
     }
     .cover-banner-img {
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       object-position: center;
-      filter: contrast(1.05) brightness(1.02);
-      transition: transform 12s ease-out;
+      filter: contrast(1.04) brightness(1.02);
     }
-    .slide.active .cover-banner-img {
-      transform: scale(1.03);
-    }
-    .cover-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.75) 45%, rgba(2, 6, 23, 0.15) 100%);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 56px 64px;
-      z-index: 2;
-    }
-    .cover-tag-bar {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-    .cover-main-content {
-      max-width: 760px;
-    }
-    .cover-title {
-      font-size: 4rem;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1.05;
-      margin-bottom: 18px;
-      color: #fff;
-    }
-    .cover-title .cme-accent {
-      background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .cover-desc {
-      font-size: 1.5rem;
-      font-weight: 500;
-      color: var(--cyan-bright);
-      margin-bottom: 16px;
-      line-height: 1.35;
-    }
-    .cover-subtext {
-      font-size: 1.15rem;
-      color: var(--text-muted);
-      line-height: 1.6;
-      margin-bottom: 32px;
-    }
-    .cover-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .cover-pill {
-      padding: 8px 18px;
-      background: rgba(14, 165, 233, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      backdrop-filter: blur(8px);
-    }
-    .cover-footer {
+    .cover-footer-bar {
+      position: relative;
+      z-index: 5;
+      margin: 0 40px 24px 40px;
+      padding: 10px 24px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      padding-top: 20px;
+      align-items: center;
+      background: rgba(11, 19, 41, 0.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.15);
     }
     .cover-presenters {
       font-size: 14px;
@@ -341,10 +290,6 @@
       gap: 8px;
       font-size: 13px;
       color: var(--text-dim);
-      background: rgba(15, 23, 42, 0.6);
-      padding: 6px 14px;
-      border-radius: 9999px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .kbd-chip {
       background: #1e293b;
@@ -1071,42 +1016,19 @@
     <div class="slide-wrapper">
 
       <!-- ===================================================================
-           SLIDE 1: COVER / HERO (Using synapse-banner.svg)
+           SLIDE 1: COVER / HERO (synapse-banner.svg)
            =================================================================== -->
       <section class="slide slide-cover active" data-slide="1">
-        <div class="cover-banner-wrapper">
+        <div class="cover-banner-container">
           <img src="synapse-banner.svg" alt="SynapseCME Cover Banner" class="cover-banner-img">
         </div>
-        <div class="cover-overlay">
-          <div class="cover-tag-bar">
-            <span class="slide-eyebrow">Sovereign Intelligence at the Edge</span>
-            <span class="slide-eyebrow" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #34d399;">
-              Offline-First · Agent-First
-            </span>
+
+        <div class="cover-footer-bar">
+          <div class="cover-presenters">
+            Presentado por: <strong>Pedro Carreras & Alek Rutherford</strong> · <span style="color: var(--cyan-neon);">Vertex Data Centers</span> (<a href="https://vertexdc.com" target="_blank" style="color: inherit; text-decoration: underline;">vertexdc.com</a>)
           </div>
-
-          <div class="cover-main-content">
-            <h1 class="cover-title">Synapse<span class="cme-accent">CME</span></h1>
-            <h2 class="cover-desc">Inteligencia Soberana para la Base Instalada Hospitalaria</h2>
-            <p class="cover-subtext">
-              Convierte observaciones de campo no estructuradas en un Knowledge Graph vivo (GraphRAG) con inferencia 100% local, cero dependencia en la nube y privacidad hospitalaria absoluta.
-            </p>
-
-            <div class="cover-pills">
-              <div class="cover-pill">⚡ QVAC Psy (MedPsy)</div>
-              <div class="cover-pill">🌐 GraphRAG + Neo4j</div>
-              <div class="cover-pill">🛡️ 100% Offline-First (Nuxt 4)</div>
-              <div class="cover-pill">🚀 NVIDIA RTX Edge</div>
-            </div>
-          </div>
-
-          <div class="cover-footer">
-            <div class="cover-presenters">
-              Presentado por: <strong>Pedro Carreras & Alek Rutherford</strong> · <span style="color: var(--cyan-neon);">Vertex Data Centers</span> (vertexdc.com)
-            </div>
-            <div class="cover-nav-hint">
-              Presiona <span class="kbd-chip">→</span> o <span class="kbd-chip">Espacio</span> para comenzar · <span class="kbd-chip">P</span> Notas
-            </div>
+          <div class="cover-nav-hint">
+            Presiona <span class="kbd-chip">→</span> o <span class="kbd-chip">Espacio</span> para comenzar · <span class="kbd-chip">P</span> Notas
           </div>
         </div>
       </section>
