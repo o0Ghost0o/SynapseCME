@@ -85,7 +85,7 @@ echo -e "${GREEN}>> Starting Nuxt frontend on http://127.0.0.1:3001...${NC}"
 (
     cd "$REPO_ROOT/frontend"
     export PORT=3001
-    exec bun run dev -- --port 3001
+    exec bun --bun run dev -- --host 0.0.0.0 --port 3001
 ) &
 PIDS+=($!)
 

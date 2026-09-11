@@ -68,7 +68,7 @@ backend: ## Run FastAPI backend natively on http://127.0.0.1:8000
 	uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --reload
 
 frontend: ## Run Nuxt frontend dev server on http://127.0.0.1:3001
-	@cd frontend && bun run dev -- --port 3001
+	@cd frontend && bun --bun run dev -- --host 0.0.0.0 --port 3001
 
 gateway: ## Run Caddy gateway on http://localhost:3000
 	@caddy run --config gateway/Caddyfile.local
