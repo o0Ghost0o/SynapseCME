@@ -162,7 +162,7 @@ Capturadas automáticamente por request en `perf_log` (model load time, prompt/g
 
 ## Contacto
 
-Desarrollado y mantenido por el equipo de **[Vertex Data Centers](https://vertexdc.com)**.
+Desarrollado y mantenido por el equipo de **[Vertex Development Center](https://vertexdc.com)**.
 
 - **Equipo**: Pedro Carreras · Alek Rutherford
 - **Sitio web**: [vertexdc.com](https://vertexdc.com)
