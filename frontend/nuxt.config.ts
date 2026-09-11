@@ -26,8 +26,8 @@ export default defineNuxtConfig({
       description: 'Inteligencia de base instalada de equipamiento hospitalario',
       display: 'standalone',
       orientation: 'portrait',
-      theme_color: '#0b1023',
-      background_color: '#0b1023',
+      theme_color: '#f4f6fb',
+      background_color: '#f4f6fb',
       start_url: '/chat',
       icons: [
         { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -83,7 +83,7 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'description', content: 'Inteligencia de base instalada de equipamiento hospitalario' },
-        { name: 'theme-color', content: '#0b1023' },
+        { name: 'theme-color', content: '#f4f6fb' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
@@ -92,6 +92,12 @@ export default defineNuxtConfig({
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' },
         { rel: 'apple-touch-icon', href: '/icons/icon-192.png' },
+        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap',
+        },
       ],
     },
   },
