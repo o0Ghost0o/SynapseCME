@@ -160,6 +160,15 @@ Capturadas automáticamente por request en `perf_log` (model load time, prompt/g
 
 `POST /api/auth/login|refresh|logout` · `GET /api/auth/me` · `POST/GET /api/auth/users` (admin) · `POST /api/chat` (SSE, soporte batch y evidencia, capturer+) · `GET /api/evidence/{filename}` · `GET /api/equipment/{id}` · `PATCH /api/equipment/{id}` (edición manual auditada) · `POST /api/equipment/{id}/chat` (Q&A y revisión) · `POST /api/stt` (multipart audio → texto, capturer+) · `GET /api/facility/{id}` · `GET /api/hierarchy` · `GET /api/network` · `GET /api/metrics` · `GET /api/transactions` (+ `/export.csv`) · `GET /api/conversations` · `WS /ws/events` (hello con token) · `GET /api/health`
 
+## Contacto
+
+Desarrollado y mantenido por el equipo de **[Vertex Data Centers](https://vertexdc.com)**.
+
+- **Equipo**: Pedro Carreras · Alek Rutherford
+- **Sitio web**: [vertexdc.com](https://vertexdc.com)
+- **Correo electrónico**: [pcarreras@vertexdc.com](mailto:pcarreras@vertexdc.com)
+- **WhatsApp**: [+507 6161-0410](https://wa.me/50761610410)
+
 ## Licencia
 
 [MIT](LICENSE)
