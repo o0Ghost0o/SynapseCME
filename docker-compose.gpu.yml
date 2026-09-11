@@ -2,6 +2,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 # Without this file the qvac service runs CPU-only, so the full stack also
 # works on machines without a GPU (slower inference, same behavior).
+#
+# VERIFIED LIMITATION (Windows + Docker Desktop, GTX 1650 SUPER, driver
+# 616.64): this override gives NO GPU acceleration there. NVIDIA's WSL driver
+# package ships CUDA libs only — no Vulkan ICD — and @qvac/llm-llamacpp is
+# Vulkan-only (libqvac-ggml-vulkan.so). Mesa's D3D12 Vulkan (Dozen) is not
+# packaged in Debian. Inference stays on CPU (~15 tps for MedPsy Q4_K_M).
+# Keep this file for the native-Linux NVIDIA node only.
 
 services:
   qvac:

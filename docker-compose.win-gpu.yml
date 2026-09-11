@@ -1,0 +1,24 @@
+# Windows-node GPU override (GTX 1650 SUPER dev machine).
+#
+# Docker Desktop on Windows cannot give containers a Vulkan ICD (NVIDIA's WSL
+# driver ships CUDA only; Mesa's Dozen is not packaged for Debian/Ubuntu), and
+# @qvac/llm-llamacpp is Vulkan-only — so the qvac CONTAINER always falls back
+# to CPU there. This override keeps the stack in Docker but points the backend
+# at a QVAC server running NATIVELY on the Windows host, where the NVIDIA
+# driver provides full Vulkan and MedPsy runs on the GPU.
+#
+# Usage:
+#   1. Install once:  npm install -g --prefix F:/pedro/tools/qvac-node @qvac/cli
+#   2. Start host server (see scripts/qvac-host-serve.ps1), port 11434.
+#      Approve the Windows Firewall prompt for node.exe (private networks).
+#   3. docker compose -f docker-compose.yml -f docker-compose.win-gpu.yml up -d
+#
+# The in-Docker qvac service still starts (backend depends_on it for
+# health/ordering) but serves no traffic; the backend talks to the host.
+# Do NOT apply docker-compose.gpu.yml on this machine — it reserves the NVIDIA
+# device for nothing (verified: no Vulkan ICD reachable from containers).
+
+services:
+  backend:
+    environment:
+      QVAC_BASE_URL: http://host.docker.internal:11434

@@ -1,0 +1,19 @@
+{
+  "serve": {
+    "models": {
+      "medpsy:q4_k_m": {
+        "src": "F:/pedro/SynapseCME/models/medpsy.gguf",
+        "type": "llm",
+        "config": { "ctx_size": 8192 }
+      },
+      "EMBEDDINGGEMMA_300M_Q4_0": {
+        "src": "F:/pedro/SynapseCME/models/EMBEDDINGGEMMA_300M_Q4_0.gguf",
+        "type": "embeddings"
+      }
+    },
+    "load": {
+      "timeoutMs": 600000,
+      "cancelOnDisconnect": false
+    }
+  }
+}

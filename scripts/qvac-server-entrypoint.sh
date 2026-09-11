@@ -3,9 +3,9 @@
 # HTTP server via @qvac/cli, replacing the stock Ollama container.
 #
 # Responsibilities:
-#   1. Install @qvac/cli globally on first boot (npm cache volume makes
-#      re-installs on later boots cheap; the binary lives in the named
-#      qvac_models volume so it also survives container recreation).
+#   1. Install @qvac/cli on first boot into /opt/qvac-node (bind mount under
+#      $VOLUMES_ROOT, so it survives container recreation; the npm cache
+#      volume makes re-installs cheap).
 #   2. Generate /config/qvac.config.json from env vars. The CLI cannot
 #      template env vars into the config itself, so we render it here.
 #   3. exec "qvac serve openai" bound to 0.0.0.0:11434.
@@ -52,17 +52,21 @@ CONFIG_DIR="/config"
 CONFIG_PATH="${CONFIG_DIR}/qvac.config.json"
 
 # 1) CLI --------------------------------------------------------------------
-# The package persists in the qvac_models volume (mounted over
-# /usr/local/lib/node_modules) but the bin symlink at /usr/local/bin/qvac
-# lives in the image layer and is lost on container recreation — relink it
-# when the package is already there instead of reinstalling.
+# The package persists in /opt/qvac-node (mounted from $VOLUMES_ROOT), but
+# the bin symlink at /usr/local/bin/qvac lives in the container layer and is
+# lost on recreation — relink it when the package is already there instead
+# of reinstalling. NOTE: the persistent prefix must NOT be
+# /usr/local/lib/node_modules — a bind mount there hides the image's own
+# npm (named volumes seed themselves from the image, bind mounts don't).
+QVAC_PREFIX=/opt/qvac-node
 if ! command -v qvac >/dev/null 2>&1; then
-    if [ -f /usr/local/lib/node_modules/@qvac/cli/dist/index.js ]; then
+    if [ -f "$QVAC_PREFIX/lib/node_modules/@qvac/cli/dist/index.js" ]; then
         echo "QVAC: relinking qvac binary from persisted module"
-        ln -sf ../lib/node_modules/@qvac/cli/dist/index.js /usr/local/bin/qvac
+        ln -sf "$QVAC_PREFIX/lib/node_modules/@qvac/cli/dist/index.js" /usr/local/bin/qvac
     else
         echo "QVAC: installing @qvac/cli ..."
-        npm install -g @qvac/cli
+        npm install -g --prefix "$QVAC_PREFIX" @qvac/cli
+        ln -sf "$QVAC_PREFIX/bin/qvac" /usr/local/bin/qvac
     fi
 fi
 qvac --version 2>/dev/null || echo "QVAC: qvac binary present"

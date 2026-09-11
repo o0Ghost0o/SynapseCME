@@ -53,15 +53,23 @@ services:
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
       EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}
       # Phase 2: Pear/HTTP URL for P2P model fetch. Default = official MedPsy
-      # Q4_K_M (imatrix) from HuggingFace: QVAC downloads and caches it on
-      # first load, so a fresh deployment serves the LLM without manual steps.
-      # Override with a local drop: place the GGUF at ./models/medpsy.gguf.
+      # Q4_K_M (imatrix) from HuggingFace. NOTE: in-container HuggingFace
+      # downloads stall on some Docker Desktop hosts (observed on Windows:
+      # headers arrive, body never flows). The repo ships pre-seeded local
+      # drop-zone files (./models/medpsy.gguf, ./models/EMBEDDINGGEMMA_300M_
+      # Q4_0.gguf) which the entrypoint prefers over any remote source.
       QVAC_MODEL_SOURCE: ${QVAC_MODEL_SOURCE:-https://huggingface.co/qvac/MedPsy-1.7B-GGUF/resolve/main/medpsy-1.7b-q4_k_m-imat.gguf}
       QVAC_PORT: "11434"
       QVAC_HOST: 0.0.0.0
+      # Worker spawn+first model load reads the GGUF over the host file share,
+      # which exceeds the SDK's default 30s RPC-init timeout on slow mounts.
+      # Verified on a Windows/Docker-Desktop host (F: bind mounts): first load
+      # needs ~60s. Models stay resident after that.
+      QVAC_RPC_INIT_TIMEOUT_MS: "300000"
     volumes:
-      - qvac_models:/usr/local/lib/node_modules
-      - qvac_npm_cache:/root/.npm
+      - ${VOLUMES_ROOT:-./volumes}/qvac-node:/opt/qvac-node
+      - ${VOLUMES_ROOT:-./volumes}/npm-cache:/root/.npm
+      - ${VOLUMES_ROOT:-./volumes}/qvac-cache:/root/.cache
       - ./scripts/qvac-server-entrypoint.sh:/qvac-server-entrypoint.sh:ro
       - ./models:/models:ro
     healthcheck:
@@ -151,7 +159,7 @@ services:
       stt:
         condition: service_healthy
     volumes:
-      - rag_data:/data/rag
+      - ${VOLUMES_ROOT:-./volumes}/rag:/data/rag
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
@@ -187,8 +195,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-
-volumes:
-  qvac_models:
-  qvac_npm_cache:
-  rag_data:
