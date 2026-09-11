@@ -272,3 +272,64 @@ class TestEquipmentChat:
         monkeypatch.setattr(engine, "driver", lambda: object())
         r = TestClient(app).post("/api/equipment/eq-1/chat", json={"message": "x"})
         assert r.status_code == 401
+
+
+class TestPatchEquipment:
+    def test_patch_equipment_success(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+
+        async def fake_patch(eid, data, **kwargs):
+            return {
+                "equipment": {
+                    "id": eid,
+                    "modality": "CT",
+                    "manufacturer": data.manufacturer or "GE",
+                    "model": data.model or "LightSpeed",
+                    "age_years": data.age_years if data.age_years is not None else 4.0,
+                    "quantity": data.quantity or 1,
+                    "state": "Estimado",
+                    "facility_name": "Hospital Santo Tomas",
+                    "city": "Panama",
+                    "country": "Panama",
+                },
+                "parameters": [
+                    {
+                        "id": "par-1",
+                        "source_observation_id": "obs-1",
+                        "name": "voltaje",
+                        "value": 120.0,
+                        "unit": "V",
+                        "status": "ok",
+                    }
+                ],
+                "observations": [],
+            }
+
+        monkeypatch.setattr(engine, "patch_equipment", fake_patch)
+        r = client_as("capturer").patch(
+            "/api/equipment/eq-1",
+            json={
+                "manufacturer": "GE",
+                "model": "Optima",
+                "parameters": [
+                    {"name": "voltaje", "value": 120.0, "unit": "V", "status": "ok"}
+                ],
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["equipment"]["id"] == "eq-1"
+        assert data["equipment"]["model"] == "Optima"
+
+    def test_patch_equipment_not_found(self, monkeypatch):
+        monkeypatch.setattr(engine, "driver", lambda: object())
+
+        async def fake_patch(eid, data, **kwargs):
+            return None
+
+        monkeypatch.setattr(engine, "patch_equipment", fake_patch)
+        r = client_as("capturer").patch(
+            "/api/equipment/eq-nonexistent",
+            json={"model": "Test"},
+        )
+        assert r.status_code == 404

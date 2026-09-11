@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import db
 from app.agent import service as agent_service
 from app.agent.qvac import QvacClient
-from app.api import auth, chat, conversations, equipment, facilities, metrics, stt, transactions, ws
+from app.api import auth, chat, conversations, equipment, evidence, facilities, metrics, stt, transactions, ws
 from app.auth import service as auth_service
 from app.core.config import settings
 from app.graph import engine
@@ -103,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router)
     app.include_router(sync_router.router)
     app.include_router(transactions.router)
+    app.include_router(evidence.router)
     app.include_router(ws.router)
 
     @app.get("/api/health", response_model=HealthResponse)

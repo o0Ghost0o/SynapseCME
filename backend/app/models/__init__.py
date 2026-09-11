@@ -37,10 +37,16 @@ class ExtractionResult(BaseModel):
     raw: str | None = None
     extractor: str = "rule"
     followup: str | None = None
+    evidence: str | None = None
+    created_at: str | None = None
 
 
 class ChatRequest(BaseModel):
     message: str
+    messages: list[str] | None = None
+    evidence: str | None = None
+    client_timestamp: str | None = None
+    client_timezone: str | None = None
     contributor: str | None = None
     client_type: str | None = None
     # Optional anchor to an existing conversation (validated server-side:
@@ -53,6 +59,19 @@ class EquipmentChatRequest(BaseModel):
 
     message: str
     client_type: str | None = None
+    client_timestamp: str | None = None
+    client_timezone: str | None = None
+
+
+class EquipmentPatchRequest(BaseModel):
+    """Actualización manual de atributos y/o magnitudes técnicas de un equipo."""
+
+    manufacturer: str | None = None
+    model: str | None = None
+    age_years: float | None = None
+    quantity: int | None = None
+    parameters: list[ParameterExtraction] | None = None
+    note: str | None = "Actualización manual"
 
 
 class IngestResult(BaseModel):

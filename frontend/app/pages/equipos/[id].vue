@@ -57,6 +57,87 @@ function paramValue(p: ParameterEntry): string {
 watch(equipmentId, load)
 onMounted(load)
 
+// —— Edición manual directa (PATCH) ——
+const editMode = ref(false)
+const savingManual = ref(false)
+const lightboxImage = ref<string | null>(null)
+const editForm = reactive({
+  manufacturer: '',
+  model: '',
+  ageYears: null as number | null,
+  quantity: 1,
+  parameters: [] as {
+    name: string
+    value: string | number | null
+    unit: string
+    status: 'ok' | 'warning' | 'critical' | null
+  }[],
+})
+
+function startEditing() {
+  if (!equipment.value) return
+  editForm.manufacturer = equipment.value.manufacturer || ''
+  editForm.model = equipment.value.model || ''
+  editForm.ageYears = equipment.value.ageYears
+  editForm.quantity = (equipment.value as Record<string, unknown>).quantity ? Number((equipment.value as Record<string, unknown>).quantity) : 1
+  editForm.parameters = parameters.value.map((p) => ({
+    name: p.name,
+    value: p.value,
+    unit: p.unit || '',
+    status: p.status,
+  }))
+  editMode.value = true
+}
+
+function addParameterRow() {
+  editForm.parameters.push({
+    name: '',
+    value: null,
+    unit: '',
+    status: 'ok',
+  })
+}
+
+function removeParameterRow(idx: number) {
+  editForm.parameters.splice(idx, 1)
+}
+
+async function saveManualEdit() {
+  savingManual.value = true
+  try {
+    const res = await fetchWithAuth(`/api/equipment/${encodeURIComponent(equipmentId.value)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        manufacturer: editForm.manufacturer.trim() || null,
+        model: editForm.model.trim() || null,
+        age_years: editForm.ageYears,
+        quantity: editForm.quantity,
+        parameters: editForm.parameters
+          .filter((p) => p.name.trim())
+          .map((p) => {
+            const rawVal = p.value
+            const numVal = Number(rawVal)
+            return {
+              name: p.name.trim(),
+              value: rawVal === '' || rawVal === null ? null : (Number.isFinite(numVal) ? numVal : String(rawVal)),
+              unit: p.unit.trim() || null,
+              status: p.status || null,
+            }
+          }),
+      }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    show('Ficha técnica actualizada exitosamente')
+    editMode.value = false
+    await load()
+  } catch {
+    show('Error al actualizar la ficha del equipo')
+  } finally {
+    savingManual.value = false
+  }
+}
+
 // —— Mini-chat de revisión anclado a este equipo ——
 interface EqChatParam {
   name: string
@@ -223,12 +304,110 @@ function paramClass(status?: string | null): string {
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
+            <button
+              class="btn-ghost flex items-center gap-1.5 text-xs py-1.5 px-3"
+              @click="editMode ? editMode = false : startEditing()"
+            >
+              <Icon :name="editMode ? 'close' : 'edit'" :size="13" />
+              {{ editMode ? 'Cancelar edición' : 'Editar manualmente' }}
+            </button>
             <span class="glass-chip">{{ equipment.modality }}</span>
             <span v-if="equipment.ageYears !== null" class="glass-chip">{{ equipment.ageYears }} años</span>
             <StateChip :estado="equipment.state" />
           </div>
         </div>
       </div>
+
+      <!-- Formulario de edición manual directa -->
+      <section v-if="editMode" class="glass-strong border-[#c4ddfb] bg-[#f8fbff] p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-2 border-b border-[#e3e8f2] pb-3">
+          <div>
+            <h2 class="font-display text-sm font-semibold text-[#101828]">Edición manual de ficha</h2>
+            <p class="text-xs text-[#5b6780]">Modifica directamente los datos del equipo y sus magnitudes técnicas.</p>
+          </div>
+          <button class="btn-ghost text-xs" @click="editMode = false">
+            <Icon name="close" :size="13" /> Cerrar
+          </button>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+          <div>
+            <label class="text-[11px] font-semibold uppercase text-[#7a8499]">Fabricante</label>
+            <input v-model="editForm.manufacturer" class="glass-input mt-1 text-sm py-1.5" placeholder="Ej: GE, Siemens" />
+          </div>
+          <div>
+            <label class="text-[11px] font-semibold uppercase text-[#7a8499]">Modelo</label>
+            <input v-model="editForm.model" class="glass-input mt-1 text-sm py-1.5" placeholder="Ej: LightSpeed" />
+          </div>
+          <div>
+            <label class="text-[11px] font-semibold uppercase text-[#7a8499]">Antigüedad (años)</label>
+            <input v-model.number="editForm.ageYears" type="number" step="0.5" class="glass-input mt-1 text-sm py-1.5" placeholder="Ej: 4" />
+          </div>
+          <div>
+            <label class="text-[11px] font-semibold uppercase text-[#7a8499]">Cantidad</label>
+            <input v-model.number="editForm.quantity" type="number" min="1" class="glass-input mt-1 text-sm py-1.5" placeholder="1" />
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-[#7a8499]">Parámetros técnicos</h3>
+            <button type="button" class="btn-ghost text-xs py-1 px-2.5" @click="addParameterRow">
+              <Icon name="plus" :size="12" /> Añadir parámetro
+            </button>
+          </div>
+
+          <div v-if="editForm.parameters.length" class="mt-2.5 flex flex-col gap-2">
+            <div
+              v-for="(p, idx) in editForm.parameters"
+              :key="idx"
+              class="flex flex-wrap items-center gap-2 rounded-xl border border-[#e3e8f2] bg-white p-2.5"
+            >
+              <input
+                v-model="p.name"
+                class="glass-input text-xs py-1 flex-1 min-w-[120px]"
+                placeholder="Nombre (ej: voltaje)"
+              />
+              <input
+                v-model="p.value"
+                class="glass-input text-xs py-1 w-24"
+                placeholder="Valor"
+              />
+              <input
+                v-model="p.unit"
+                class="glass-input text-xs py-1 w-20"
+                placeholder="Unidad"
+              />
+              <select
+                v-model="p.status"
+                class="glass-input text-xs py-1 w-28"
+              >
+                <option :value="null">Sin estado</option>
+                <option value="ok">Ok (normal)</option>
+                <option value="warning">Warning</option>
+                <option value="critical">Critical</option>
+              </select>
+              <button
+                type="button"
+                class="btn-ghost text-xs text-[#b42318] hover:bg-[#fdf0f0] p-1.5"
+                title="Eliminar parámetro"
+                @click="removeParameterRow(idx)"
+              >
+                <Icon name="trash" :size="13" />
+              </button>
+            </div>
+          </div>
+          <p v-else class="mt-2 text-xs text-[#98a2b8] italic">No hay parámetros definidos. Pulsa «Añadir parámetro» para agregar uno.</p>
+        </div>
+
+        <div class="mt-5 flex justify-end gap-2 border-t border-[#e3e8f2] pt-3">
+          <button class="btn-ghost text-xs" :disabled="savingManual" @click="editMode = false">Cancelar</button>
+          <button class="btn-primary text-xs flex items-center gap-1.5" :disabled="savingManual" @click="saveManualEdit">
+            <Icon v-if="!savingManual" name="check" :size="13" />
+            {{ savingManual ? 'Guardando…' : 'Guardar cambios' }}
+          </button>
+        </div>
+      </section>
 
       <div
         v-if="hasIssues"
@@ -424,6 +603,14 @@ function paramClass(status?: string | null): string {
           <li v-for="obs in observations" :key="obs.id" class="relative">
             <span class="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border border-[#c4ddfb] bg-[#1d63d8]" />
             <p class="text-sm leading-relaxed text-[#1a2233]">{{ obs.text }}</p>
+            <div v-if="obs.evidence" class="mt-2">
+              <img
+                :src="obs.evidence.startsWith('data:') || obs.evidence.startsWith('http') ? obs.evidence : `/api/evidence/${obs.evidence}`"
+                alt="Evidencia fotográfica"
+                class="max-h-36 rounded-lg border border-[#c4ddfb] object-cover cursor-pointer transition hover:opacity-90 shadow-sm"
+                @click="lightboxImage = obs.evidence"
+              />
+            </div>
             <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[#7a8499]">
               <span class="glass-chip">
                 <Icon name="user" :size="11" class="shrink-0" />
@@ -454,5 +641,28 @@ function paramClass(status?: string | null): string {
         </p>
       </section>
     </template>
+
+    <!-- Modal Lightbox para fotos de evidencia -->
+    <Teleport to="body">
+      <div
+        v-if="lightboxImage"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        @click="lightboxImage = null"
+      >
+        <div class="relative max-h-[90vh] max-w-[90vw]" @click.stop>
+          <img
+            :src="lightboxImage.startsWith('data:') || lightboxImage.startsWith('http') ? lightboxImage : `/api/evidence/${lightboxImage}`"
+            alt="Evidencia fotográfica completa"
+            class="max-h-[85vh] max-w-[85vw] rounded-xl object-contain shadow-2xl"
+          />
+          <button
+            class="absolute -top-3 -right-3 grid h-8 w-8 place-items-center rounded-full bg-white text-[#101828] shadow-md hover:bg-gray-100"
+            @click="lightboxImage = null"
+          >
+            <Icon name="close" :size="16" />
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

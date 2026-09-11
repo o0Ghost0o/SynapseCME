@@ -1,6 +1,8 @@
 /* Normalizadores defensivos: el backend aún no está implementado, así que
    aceptamos varias formas de respuesta y las llevamos a una forma conocida. */
 
+import { formatClientRelative } from './date'
+
 export interface HierarchyItem {
   id: string
   name: string
@@ -136,6 +138,7 @@ export interface ObservationEntry {
   text: string
   confidence: number | null
   createdAt: string
+  evidence?: string | null
 }
 
 export type ParameterStatus = 'ok' | 'warning' | 'critical'
@@ -193,6 +196,7 @@ export function normalizeEquipmentDetail(data: unknown): EquipmentDetailData {
       text: String(oo.text ?? ''),
       confidence: Number.isFinite(confidence) ? confidence : null,
       createdAt: String(oo.created_at ?? ''),
+      evidence: oo.evidence ? String(oo.evidence) : null,
     }
   })
   return {
@@ -257,15 +261,7 @@ export function normalizeEquipmentList(data: unknown): EquipmentListData {
 }
 
 export function relativeDate(iso: string): string {
-  if (!iso) return 'Sin fecha'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return 'Sin fecha'
-  const days = Math.floor((Date.now() - d.getTime()) / 86400000)
-  if (days <= 0) return 'Hoy'
-  if (days === 1) return 'Ayer'
-  if (days < 30) return `Hace ${days} días`
-  if (days < 365) return `Hace ${Math.floor(days / 30)} meses`
-  return `Hace ${Math.floor(days / 365)} años`
+  return formatClientRelative(iso)
 }
 
 export interface MetricEntry {

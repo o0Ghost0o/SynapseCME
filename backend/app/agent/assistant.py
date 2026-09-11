@@ -18,6 +18,7 @@ from typing import Any
 
 from app.agent import extractor as rule_extractor
 from app.agent import rag
+from app.agent.knowledge import APP_KNOWLEDGE_BASE
 from app.agent.qvac import QvacClient
 from app.graph import engine
 from app.graph.context import graph_context
@@ -39,16 +40,17 @@ APOLOGY_ANSWER = (
     "Inténtalo de nuevo con más detalle."
 )
 
-TOOL_SYSTEM_PROMPT = """You are the SynapseCME assistant, answering in Spanish questions about medical \
+TOOL_SYSTEM_PROMPT = f"""You are the SynapseCME assistant, answering in Spanish questions about medical \
 equipment installed in hospitals. You can call tools. Reply with ONLY one JSON object per turn, \
 no text outside the JSON:
-{"action":"tool","tool":"<tool name>","args":{...}}  to call a tool
-{"action":"final","answer_es":"<your answer in Spanish>"}  when you have enough information
+{{"action":"tool","tool":"<tool name>","args":{{...}}}}  to call a tool
+{{"action":"final","answer_es":"<your answer in Spanish>"}}  when you have enough information
 
 Tools:
-- list_equipment(args: modality?, manufacturer?, state?, country?, facility?, has_issue?) -> list of \
+- list_equipment(args: modality?, manufacturer?, state?, country?, facility?, has_issue?, unnamed?) -> list of \
 equipment units matching the filters. modality is a code: MR, CT, XR, UL, MG, RF. Use has_issue=true \
-to list only units with parameters in warning or critical status (their issue_params are included).
+to list only units with parameters in warning or critical status (their issue_params are included). \
+Use unnamed=true to list equipment lacking manufacturer or model.
 - get_equipment_detail(args: id) -> one equipment unit with its parameters (with status) and recent \
 observations. id is a SINGLE id string copied from a list_equipment result (never a list).
 - search_observations(args: query) -> past field observations similar to the query (texts).
@@ -65,10 +67,13 @@ Rules:
 - answer_es must be a short, complete answer in Spanish.
 - Always reply with valid JSON only.
 
+Knowledge Base:
+{APP_KNOWLEDGE_BASE}
+
 Example:
 User: Cuantas resonancias hay en Ciudad de Panamá?
-{"action":"tool","tool":"list_equipment","args":{"modality":"MR","facility":"Ciudad de Panamá"}}
-{"action":"final","answer_es":"Hay 3 resonancias registradas en Ciudad de Panamá."}"""
+{{"action":"tool","tool":"list_equipment","args":{{"modality":"MR","facility":"Ciudad de Panamá"}}}}
+{{"action":"final","answer_es":"Hay 3 resonancias registradas en Ciudad de Panamá."}}"""
 
 
 @dataclass
@@ -127,7 +132,15 @@ def parse_json_object(text: str) -> dict[str, Any] | None:
 # - digits in the message => the user reports field data (observation/mixed)
 _QUESTION_MARK_RE = re.compile(r"[?¿]")
 _INTERROGATIVE_START_RE = re.compile(
-    r"^\s*(qu[ée]|cu[áa]l|cu[áa]nt\w*|c[óo]mo|d[óo]nde|cu[áa]ndo|qui[ée]n)\b",
+    r"\b(qu[ée]|cu[áa]l(es)?|cu[áa]nt\w*|c[óo]mo|d[óo]nde|cu[áa]ndo|qui[ée]n(es)?|por\s*qu[ée])\b",
+    re.IGNORECASE,
+)
+_QUERY_VERBS_RE = re.compile(
+    r"\b(dame|da|muestra|mu[ée]strame|mostrar|lista|listar|l[ií]stame|dime|decir|busca|buscar|b[uú]scame|encuentra|encontrar|consulta|consultar|ver|explica|expl[ií]came|explicar|hay\s+alg[uú]n\w*|cu[áa]les\s+son|qu[ée]\s+equipos?)\b",
+    re.IGNORECASE,
+)
+_QUESTION_EXPLANATION_RE = re.compile(
+    r"^\s*[¿?]?\s*(por\s*qu[ée]|c[óo]mo|explica|expl[ií]came|explicar|dame|da\b|muestra|mu[ée]strame|mostrar|lista\b|listar|l[ií]stame|cu[áa]l(es)?\s+es|qu[ée]\s+es)\b",
     re.IGNORECASE,
 )
 
@@ -140,13 +153,18 @@ def classify_intent(client: QvacClient | None, message: str) -> str:
     is treated as an observation, preserving the historical capture flow.
     """
     text = message or ""
-    has_question = bool(_QUESTION_MARK_RE.search(text)) or bool(
-        _INTERROGATIVE_START_RE.match(text)
+    has_question = (
+        bool(_QUESTION_MARK_RE.search(text))
+        or bool(_INTERROGATIVE_START_RE.search(text))
+        or bool(_QUERY_VERBS_RE.search(text))
     )
-    has_field_data = any(ch.isdigit() for ch in text)
-    if has_question and has_field_data:
-        return INTENT_MIXED
+    has_digits = any(ch.isdigit() for ch in text)
+
     if has_question:
+        if has_digits:
+            if _QUESTION_EXPLANATION_RE.match(text):
+                return INTENT_QUESTION
+            return INTENT_MIXED
         return INTENT_QUESTION
     return INTENT_OBSERVATION
 
@@ -215,6 +233,7 @@ async def _tool_list_equipment(
         country=_as_filter(args.get("country")),
         facility=_as_filter(args.get("facility")),
         has_issue=_as_bool(args.get("has_issue")),
+        unnamed=_as_bool(args.get("unnamed")),
         limit=LIST_EQUIPMENT_LIMIT,
     )
     total = int(result.get("total") or 0)
@@ -462,7 +481,10 @@ async def _try_list_fast_path(
             break
     has_issue = bool(_ISSUE_RE.search(text))
     facility = _extract_facility(text, await _facility_names())
-    if modality is None and not has_issue and facility is None:
+    is_unnamed = bool(re.search(r"sin\s+(nombre|modelo|descripci[oó]n|identific|datos)", text, re.IGNORECASE))
+    is_list_all = bool(re.search(r"\b(todos\s+los\s+equipos|lista\s+de\s+(todos\s+los\s+)?equipos|listar\s+equipos|cu[áa]ntos\s+equipos)\b", text, re.IGNORECASE))
+
+    if modality is None and not has_issue and facility is None and not is_unnamed and not is_list_all:
         return None
 
     tool_text = await _tool_list_equipment(
@@ -470,6 +492,7 @@ async def _try_list_fast_path(
             "modality": modality,
             "has_issue": has_issue,
             "facility": facility,
+            "unnamed": is_unnamed,
         },
         refs=ctx.equipment_refs,
     )

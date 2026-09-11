@@ -18,6 +18,7 @@ from app import db
 from app.agent import assistant
 from app.agent import extractor as rule_extractor
 from app.agent import rag
+from app.agent.knowledge import APP_KNOWLEDGE_BASE
 from app.agent.qvac import QvacClient, QvacError
 from app.core.config import Settings, settings
 from app.core.metrics import InferenceMetrics, build_metrics
@@ -385,6 +386,12 @@ async def handle_chat(
         return
 
     system_prompt = EXTRACTION_SYSTEM_PROMPT
+    if request.client_timestamp:
+        system_prompt += (
+            f"\n\nClient local reference time: {request.client_timestamp} "
+            f"(Timezone: {request.client_timezone or 'UTC'}). "
+            f"Interpret relative dates (hoy, ayer, etc.) relative to this client timestamp."
+        )
     if client is not None:
         try:
             context_text = await rag.build_context(
@@ -395,7 +402,7 @@ async def handle_chat(
             )
             if context_text:
                 system_prompt = (
-                    f"{EXTRACTION_SYSTEM_PROMPT}\n\n{context_text}\n\n{RAG_INSTRUCTIONS}"
+                    f"{system_prompt}\n\n{context_text}\n\n{RAG_INSTRUCTIONS}"
                 )
         except Exception as exc:  # noqa: BLE001 - retrieval must not kill the stream
             logger.warning("Recuperación de contexto RAG falló; se continúa sin ella: %s", exc)
@@ -449,10 +456,17 @@ async def handle_chat(
             emitted_text = FALLBACK_ACK
             yield _sse({"type": "token", "text": FALLBACK_ACK})
 
+    if ext is not None:
+        if request.evidence:
+            ext.evidence = request.evidence
+        if request.client_timestamp:
+            ext.created_at = request.client_timestamp
+
     yield _sse({"type": "extraction", "data": ext.model_dump()})
 
     # 3) Ingest into the graph ----------------------------------------------
     transaction_ids: list[int] = []
+    ingest = None
     try:
         ingest = await engine.ingest_extraction(
             ext, contributor, request.client_type, full_name=full_name
@@ -505,6 +519,7 @@ async def handle_chat(
     done_payload: dict[str, Any] = {
         "type": "done",
         "transaction_id": transaction_ids[0] if transaction_ids else request_id,
+        "equipment_ids": ingest.equipment_ids if ingest is not None else [],
     }
     if conversation_id is not None:
         done_payload["conversation_id"] = conversation_id
@@ -647,6 +662,83 @@ async def handle_equipment_chat(
         return
 
     client = _client
+    intent = assistant.classify_intent(client, message)
+    if intent in (assistant.INTENT_QUESTION, assistant.INTENT_MIXED):
+        detail = await engine.get_equipment_detail(equipment_id)
+        params_str = ", ".join(
+            f"{p.get('name')}: {p.get('value')} {p.get('unit') or ''} ({p.get('status')})"
+            for p in (detail.get("parameters") if detail else [])
+        ) or "ninguno registrado"
+        eq_state = (detail.get("equipment") or {}).get("state", "Desconocido") if detail else "Desconocido"
+
+        qa_system_prompt = f"""You are the SynapseCME expert assistant answering in Spanish a question about a specific medical equipment unit.
+Equipment context:
+- Facility: {ctx.get('facility_name')} ({ctx.get('city')}, {ctx.get('country')})
+- Modality: {ctx.get('modality') or 'No especificada'}
+- Manufacturer: {ctx.get('manufacturer') or 'Desconocido'}
+- Model: {ctx.get('model') or 'Desconocido'}
+- State: {eq_state}
+- Parameters: {params_str}
+
+Knowledge Base:
+{APP_KNOWLEDGE_BASE}
+
+Instructions:
+- Answer the user's question directly, clearly, and concisely in Spanish (español).
+- Explain technical consensus states, parameter status, or reasons why an attribute is estimated according to the knowledge base.
+- NEVER invent values, measurements, or actions.
+- Reply with conversational text ONLY. Do NOT output JSON. Do NOT register revisions."""
+
+        answered = False
+        if client is not None:
+            try:
+                async for event in client.stream_chat([
+                    {"role": "system", "content": qa_system_prompt},
+                    {"role": "user", "content": message},
+                ]):
+                    token = event.get("token", "")
+                    if token:
+                        answered = True
+                        emitted_text += token
+                        yield _sse({"type": "token", "text": token})
+            except Exception as exc:
+                logger.warning("Error en Q&A de equipo con LLM: %s", exc)
+
+        if not answered:
+            msg_lower = message.lower()
+            if "estimad" in msg_lower:
+                emitted_text = (
+                    "El estado de este equipo es Estimado porque cuenta con observaciones preliminares "
+                    "cuyo peso de confianza acumulado aún no alcanza el umbral de 1.0 para ser Reportado, "
+                    "o no ha sido corroborado por un segundo contribuyente independiente."
+                )
+            elif "parámetro" in msg_lower or "parametro" in msg_lower or "voltaje" in msg_lower:
+                emitted_text = f"Los parámetros registrados actualmente son: {params_str}."
+            else:
+                emitted_text = (
+                    f"Información actual de la ficha: {ctx.get('modality') or 'Equipo'} en estado {eq_state} "
+                    f"en {ctx.get('facility_name')}. No se realizaron modificaciones en la base de datos."
+                )
+            yield _sse({"type": "token", "text": emitted_text})
+
+        total_ms = int((time.perf_counter() - started) * 1000)
+        metrics = build_metrics(
+            model=client.model if client else "rule-fallback",
+            ttft_ms=total_ms,
+            total_ms=total_ms,
+            prompt_text=message,
+            generated_text=emitted_text,
+            usage=None,
+            cold_start=False,
+        )
+        try:
+            await db.log_perf(request_id, metrics)
+        except Exception:
+            pass
+
+        yield _sse({"type": "done", "transaction_id": request_id})
+        return
+
     ext: ExtractionResult | None = None
     used_fallback = client is None
     if client is not None:

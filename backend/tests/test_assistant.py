@@ -52,6 +52,24 @@ class TestRouter:
     def test_garbage_defaults_to_observation(self):
         assert assistant.classify_intent(None, "hola") == "observation"
 
+    def test_query_verbs_are_questions(self):
+        assert (
+            assistant.classify_intent(None, "Dame una lista de todos los equpos sin nombre o descripcion")
+            == "question"
+        )
+        assert (
+            assistant.classify_intent(None, "explicame la razon por la cual es un estado estimado?")
+            == "question"
+        )
+        assert (
+            assistant.classify_intent(None, "¿Por qué valor específico se estableció en 120 V?")
+            == "question"
+        )
+        assert (
+            assistant.classify_intent(None, "muestra todos los tomografos")
+            == "question"
+        )
+
 
 def _parse_sse(stream: str):
     events = []

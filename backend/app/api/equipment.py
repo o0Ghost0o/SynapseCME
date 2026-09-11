@@ -11,7 +11,12 @@ from fastapi.responses import StreamingResponse
 from app.agent import service
 from app.auth.deps import require_capturer, require_viewer
 from app.graph import engine
-from app.models import EquipmentChatRequest, EquipmentDetail, EquipmentListResponse
+from app.models import (
+    EquipmentChatRequest,
+    EquipmentDetail,
+    EquipmentListResponse,
+    EquipmentPatchRequest,
+)
 
 logger = logging.getLogger("synapse.api.equipment")
 router = APIRouter(tags=["equipment"])
@@ -37,6 +42,30 @@ async def get_equipment(
     return EquipmentDetail(**detail)
 
 
+@router.patch("/api/equipment/{equipment_id}", response_model=EquipmentDetail)
+async def patch_equipment(
+    equipment_id: str,
+    patch: EquipmentPatchRequest,
+    user: dict[str, Any] = Depends(require_capturer),
+) -> EquipmentDetail:
+    """Actualización manual directa de campos y/o parámetros técnicos de un equipo."""
+    _graph_or_503()
+    try:
+        detail = await engine.patch_equipment(
+            equipment_id,
+            patch,
+            contributor=user["username"],
+            client_type="field_app",
+            full_name=user.get("full_name"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Actualización manual de equipo falló: %s", exc)
+        raise HTTPException(status_code=503, detail="Grafo no disponible") from exc
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    return EquipmentDetail(**detail)
+
+
 @router.post("/api/equipment/{equipment_id}/chat")
 async def equipment_chat(
     equipment_id: str,
@@ -52,9 +81,18 @@ async def equipment_chat(
         raise HTTPException(status_code=503, detail="Grafo no disponible") from exc
     if ctx is None:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    kwargs: dict[str, Any] = {}
+    if request.client_timestamp is not None:
+        kwargs["client_timestamp"] = request.client_timestamp
+    if request.client_timezone is not None:
+        kwargs["client_timezone"] = request.client_timezone
     return StreamingResponse(
         service.handle_equipment_chat(
-            request.message, equipment_id, user, request.client_type
+            request.message,
+            equipment_id,
+            user,
+            request.client_type,
+            **kwargs,
         ),
         media_type="text/event-stream",
         headers={
