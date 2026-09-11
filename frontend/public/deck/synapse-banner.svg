@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="100%" height="100%">
+  <defs>
+    <!-- Fondo oscuro tecnológico -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#020617;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#020617;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Gradiente de acento cian -->
+    <linearGradient id="cyanAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Resplandor detrás del isotipo -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Fondo base -->
+  <rect width="1200" height="630" fill="url(#bgGrad)" />
+
+  <!-- Red de grafos de fondo (GraphRAG aesthetic) -->
+  <g stroke="#334155" stroke-width="1.5" opacity="0.6">
+    <path d="M-100 100 L300 250 L500 50 L900 200 L1300 100" fill="none" />
+    <path d="M-50 400 L200 350 L400 550 L800 450 L1100 600" fill="none" />
+    <path d="M300 250 L200 350" fill="none" />
+    <path d="M500 50 L400 550" fill="none" opacity="0.3" />
+    <path d="M900 200 L800 450" fill="none" />
+    
+    <!-- Nodos del fondo -->
+    <circle cx="300" cy="250" r="3" fill="#475569" />
+    <circle cx="500" cy="50" r="4" fill="#475569" />
+    <circle cx="900" cy="200" r="3" fill="#475569" />
+    <circle cx="200" cy="350" r="4" fill="#475569" />
+    <circle cx="400" cy="550" r="3" fill="#475569" />
+    <circle cx="800" cy="450" r="4" fill="#475569" />
+  </g>
+
+  <!-- Resplandor central derecho -->
+  <circle cx="900" cy="315" r="350" fill="url(#glow)" />
+
+  <!-- Isotipo Gigante a la derecha -->
+  <g transform="translate(740, 155) scale(4)">
+    <path d="M40 10 L70 25 L70 55 L40 70 L10 55 L10 25 Z" fill="none" stroke="#1e293b" stroke-width="2"/>
+    <line x1="40" y1="40" x2="40" y2="10" stroke="#00f2fe" stroke-width="2"/>
+    <line x1="40" y1="40" x2="70" y2="25" stroke="#00f2fe" stroke-width="2"/>
+    <line x1="40" y1="40" x2="10" y2="55" stroke="#00f2fe" stroke-width="2"/>
+    
+    <circle cx="40" cy="10" r="5" fill="#4facfe" />
+    <circle cx="70" cy="25" r="5" fill="#00f2fe" />
+    <circle cx="70" cy="55" r="4" fill="#334155" />
+    <circle cx="40" cy="70" r="4" fill="#334155" />
+    <circle cx="10" cy="55" r="5" fill="#00f2fe" />
+    <circle cx="10" cy="25" r="4" fill="#334155" />
+    <circle cx="40" cy="40" r="8" fill="url(#cyanAccent)" />
+  </g>
+
+  <!-- Contenido textual a la izquierda -->
+  <g transform="translate(100, 260)">
+    <!-- Etiqueta superior -->
+    <rect x="0" y="-80" width="220" height="34" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="110" y="-57" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#38bdf8" text-anchor="middle" letter-spacing="1">
+      SOVEREIGN INTELLIGENCE
+    </text>
+
+    <!-- Logo Principal -->
+    <text x="0" y="20" font-family="system-ui, sans-serif" font-size="84" font-weight="800" fill="#f8fafc" letter-spacing="-2">
+      Synapse<tspan fill="url(#cyanAccent)">CME</tspan>
+    </text>
+
+    <!-- Subtítulo -->
+    <text x="0" y="70" font-family="system-ui, sans-serif" font-size="28" font-weight="400" fill="#94a3b8">
+      Inteligencia Descentralizada para
+    </text>
+    <text x="0" y="110" font-family="system-ui, sans-serif" font-size="28" font-weight="600" fill="#f1f5f9">
+      la Base Instalada de Clientes
+    </text>
+
+    <!-- Badges Tecnológicos -->
+    <g transform="translate(0, 160)">
+      <!-- Badge 1 -->
+      <rect x="0" y="0" width="110" height="40" rx="6" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <text x="55" y="25" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#38bdf8" text-anchor="middle">QVAC Psy</text>
+      
+      <!-- Badge 2 -->
+      <rect x="125" y="0" width="110" height="40" rx="6" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <text x="180" y="25" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#38bdf8" text-anchor="middle">GraphRAG</text>
+      
+      <!-- Badge 3 -->
+      <rect x="250" y="0" width="110" height="40" rx="6" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <text x="305" y="25" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#38bdf8" text-anchor="middle">Neo4j</text>
+
+      <!-- Badge 4 -->
+      <rect x="375" y="0" width="110" height="40" rx="6" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <text x="430" y="25" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#38bdf8" text-anchor="middle">Edge RTX</text>
+    </g>
+  </g>
+</svg>

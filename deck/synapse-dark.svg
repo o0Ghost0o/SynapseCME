@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="100%" height="100%">
+  <defs>
+    <!-- Gradiente tecnológico cian a azul -->
+    <linearGradient id="synapseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Ícono del Nodo / Grafo -->
+  <g transform="translate(30, 20)">
+    <!-- Conexiones base del hexágono -->
+    <path d="M40 10 L70 25 L70 55 L40 70 L10 55 L10 25 Z" fill="none" stroke="#334155" stroke-width="2"/>
+    
+    <!-- Conexiones activas del grafo (GraphRAG) -->
+    <line x1="40" y1="40" x2="40" y2="10" stroke="#00f2fe" stroke-width="2"/>
+    <line x1="40" y1="40" x2="70" y2="25" stroke="#00f2fe" stroke-width="2"/>
+    <line x1="40" y1="40" x2="10" y2="55" stroke="#00f2fe" stroke-width="2"/>
+    
+    <!-- Nodos perimetrales -->
+    <circle cx="40" cy="10" r="5" fill="#4facfe" />
+    <circle cx="70" cy="25" r="5" fill="#00f2fe" />
+    <circle cx="70" cy="55" r="4" fill="#334155" />
+    <circle cx="40" cy="70" r="4" fill="#334155" />
+    <circle cx="10" cy="55" r="5" fill="#00f2fe" />
+    <circle cx="10" cy="25" r="4" fill="#334155" />
+    
+    <!-- Nodo central (Inferencia Local/RTX) -->
+    <circle cx="40" cy="40" r="8" fill="url(#synapseGrad)" />
+  </g>
+
+  <!-- Texto del Logotipo -->
+  <text x="120" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="800" fill="#f8fafc" letter-spacing="-1">
+    Synapse<tspan fill="url(#synapseGrad)">CME</tspan>
+  </text>
+</svg>

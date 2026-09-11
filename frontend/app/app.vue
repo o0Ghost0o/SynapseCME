@@ -12,6 +12,7 @@ const navLinks = computed(() => {
     { to: '/network', label: 'Red en vivo' },
     { to: '/metricas', label: 'Métricas' },
     { to: '/documentacion', label: 'Documentación' },
+    { to: '/deck', label: 'Deck' },
   )
   if (isAdmin.value) links.push({ to: '/admin/usuarios', label: 'Usuarios' })
   return links
@@ -76,7 +77,7 @@ onMounted(() => {
 
 <template>
   <div class="min-h-screen">
-    <header v-if="route.path !== '/login'" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
+    <header v-if="route.path !== '/login' && !route.path.startsWith('/deck')" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
       <nav class="relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <NuxtLink to="/dashboard" class="flex items-center gap-2.5">
           <img
@@ -184,7 +185,7 @@ onMounted(() => {
       </nav>
     </header>
 
-    <main class="w-full px-7 pb-6 pt-6">
+    <main :class="route.path.startsWith('/deck') ? 'p-0 m-0' : 'w-full px-7 pb-6 pt-6'">
       <NuxtPage />
     </main>
 

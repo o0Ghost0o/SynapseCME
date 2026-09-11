@@ -65,7 +65,7 @@ export default defineNuxtConfig({
   nitro: {
     // Genera .output/public/index.html para que Capacitor tenga un punto de entrada estático.
     prerender: {
-      routes: ['/', '/offline'],
+      routes: ['/', '/offline', '/deck'],
     },
   },
   runtimeConfig: {
