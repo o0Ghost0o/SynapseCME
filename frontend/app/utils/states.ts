@@ -11,26 +11,26 @@ export function stateTone(estado?: string | null): StateTone {
 }
 
 export const STATE_CHIP_CLASSES: Record<StateTone, string> = {
-  emerald: 'border-emerald-300/30 bg-emerald-400/15 text-emerald-200',
-  sky: 'border-sky-300/30 bg-sky-400/15 text-sky-200',
-  amber: 'border-amber-300/30 bg-amber-400/15 text-amber-200',
-  rose: 'border-rose-300/30 bg-rose-400/15 text-rose-200',
-  slate: 'border-slate-300/20 bg-slate-400/10 text-slate-300',
+  emerald: 'border-[#bfe8d2] bg-[#eefbf4] text-[#067647]',
+  sky: 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]',
+  amber: 'border-[#f2e2a8] bg-[#fffaeb] text-[#8a6100]',
+  rose: 'border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]',
+  slate: 'border-[#e3e8f2] bg-[#f4f6fb] text-[#7a8499]',
 }
 
 export const STATE_RING_COLORS: Record<StateTone, string> = {
-  emerald: '#34d399',
-  sky: '#38bdf8',
-  amber: '#fbbf24',
-  rose: '#fb7185',
-  slate: '#94a3b8',
+  emerald: '#17b26a',
+  sky: '#0284c7',
+  amber: '#d99a00',
+  rose: '#d92d20',
+  slate: '#98a2b8',
 }
 
 /* Badges de parámetros técnicos (status inferido del texto de observación). */
 export const PARAMETER_STATUS_CLASSES: Record<'ok' | 'warning' | 'critical', string> = {
-  ok: 'border-emerald-300/30 bg-emerald-400/15 text-emerald-200',
-  warning: 'border-amber-300/30 bg-amber-400/15 text-amber-200',
-  critical: 'border-rose-300/30 bg-rose-400/15 text-rose-200',
+  ok: 'border-[#bfe8d2] bg-[#eefbf4] text-[#067647]',
+  warning: 'border-[#f2e2a8] bg-[#fffaeb] text-[#8a6100]',
+  critical: 'border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]',
 }
 
 export const PARAMETER_STATUS_LABELS: Record<'ok' | 'warning' | 'critical', string> = {

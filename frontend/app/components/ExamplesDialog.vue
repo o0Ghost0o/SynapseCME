@@ -9,7 +9,7 @@ const emit = defineEmits<{
 
 const activeCategory = ref<string>('all')
 
-const categories = computed(() => [{ id: 'all', label: 'Todos', icon: '✨' }, ...EXAMPLE_CATEGORIES])
+const categories = computed(() => [{ id: 'all', label: 'Todos', icon: 'sparkles' }, ...EXAMPLE_CATEGORIES])
 
 const visible = computed(() =>
   activeCategory.value === 'all'
@@ -36,7 +36,7 @@ onMounted(() => {
   <Teleport to="body">
     <Transition name="fade">
       <div v-if="open" class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="open = false" />
+        <div class="absolute inset-0 bg-[#101828]/40 backdrop-blur-sm" @click="open = false" />
 
         <!-- Móvil: bottom sheet casi completo · Desktop: dialog centrado -->
         <div
@@ -47,23 +47,23 @@ onMounted(() => {
         >
           <div class="flex items-start justify-between gap-3">
             <div>
-              <h2 class="text-lg font-bold text-white">Ejemplos de captura</h2>
-              <p class="mt-0.5 text-xs text-slate-400">
+              <h2 class="font-display text-lg font-bold text-[#101828]">Ejemplos de captura</h2>
+              <p class="mt-0.5 text-xs text-[#7a8499]">
                 Toca un ejemplo para pegarlo en la captura; no se envía hasta que decidas.
               </p>
             </div>
-            <button class="btn-ghost shrink-0 px-3 py-1.5 text-xs" @click="open = false">Cerrar ✕</button>
+            <button class="btn-ghost shrink-0 px-3 py-1.5 text-xs" @click="open = false">Cerrar <Icon name="close" :size="13" /></button>
           </div>
 
-          <div class="mt-4 flex gap-2 overflow-x-auto pb-1">
+          <div class="mt-4 flex shrink-0 gap-2 overflow-x-auto overflow-y-hidden pb-1">
             <button
               v-for="cat in categories"
               :key="cat.id"
               class="glass-chip shrink-0 py-1.5 transition"
-              :class="activeCategory === cat.id ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-300'"
+              :class="activeCategory === cat.id ? 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]' : 'text-[#5b6780]'"
               @click="activeCategory = cat.id"
             >
-              <span>{{ cat.icon }}</span> {{ cat.label }}
+              <Icon :name="cat.icon" :size="13" /> {{ cat.label }}
             </button>
           </div>
 
@@ -71,11 +71,11 @@ onMounted(() => {
             <ul class="flex flex-col gap-2.5">
               <li v-for="example in visible" :key="example.id">
                 <button
-                  class="glass w-full px-4 py-3 text-left transition hover:border-indigo-300/30 hover:bg-white/15 active:scale-[0.99]"
+                  class="glass w-full px-4 py-3 text-left transition hover:border-[#c4ddfb] hover:bg-[#f4f8fe] active:scale-[0.99]"
                   @click="pick(example)"
                 >
-                  <p class="text-xs font-semibold uppercase tracking-wider text-indigo-300">{{ example.label }}</p>
-                  <p class="mt-1 text-sm leading-relaxed text-slate-200">{{ example.text }}</p>
+                  <p class="text-xs font-semibold uppercase tracking-wider text-[#1d63d8]">{{ example.label }}</p>
+                  <p class="mt-1 text-sm leading-relaxed text-[#1a2233]">{{ example.text }}</p>
                 </button>
               </li>
             </ul>

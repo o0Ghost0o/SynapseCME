@@ -39,13 +39,23 @@ const connectionDot = computed(() => ({
   online: apiOnline.value === true && wsStatus.value === 'online',
   cls:
     apiOnline.value === true && wsStatus.value === 'online'
-      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-      : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]',
+      ? 'bg-[#17b26a]'
+      : 'bg-[#d92d20]',
+  chipCls:
+    apiOnline.value === true && wsStatus.value === 'online'
+      ? 'border-[#bfe8d2] bg-[#eefbf4] text-[#067647]'
+      : 'border-[#f5cdcd] bg-[#fdf0f0] text-[#b42318]',
   label:
     apiOnline.value === true && wsStatus.value === 'online'
       ? 'Conectado al servidor local'
       : 'Servidor local no disponible',
 }))
+
+const userInitials = computed(() => {
+  const name = user.value?.full_name || user.value?.username || ''
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'S'
+})
 
 async function handleWsAuthError() {
   const refreshed = await tryRefresh()
@@ -66,8 +76,8 @@ onMounted(() => {
 
 <template>
   <div class="min-h-screen">
-    <header class="sticky top-0 z-40 px-4 pt-4">
-      <nav class="glass relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
+    <header v-if="route.path !== '/login'" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
+      <nav class="relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <NuxtLink to="/dashboard" class="flex items-center gap-2.5">
           <img
             src="/logo.svg"
@@ -100,7 +110,7 @@ onMounted(() => {
             data-testid="nav-menu-button"
             @click="menuOpen = !menuOpen"
           >
-            {{ menuOpen ? '✕' : '☰' }}<span class="hidden sm:inline"> Menú</span>
+            <Icon :name="menuOpen ? 'close' : 'menu'" :size="15" /><span class="hidden sm:inline"> Menú</span>
           </button>
           <Transition name="toast">
             <div
@@ -117,19 +127,19 @@ onMounted(() => {
               >
                 {{ link.label }}
               </NuxtLink>
-              <div class="mt-1 border-t border-white/10 px-3 pt-2.5">
-                <p v-if="user" class="text-xs font-semibold leading-tight text-white">{{ user.full_name || user.username }}</p>
-                <p v-if="user" class="mb-2 text-[10px] leading-tight text-slate-400">{{ roleLabel(user.role) }}</p>
+              <div class="mt-1 border-t border-[#e3e8f2] px-3 pt-2.5">
+                <p v-if="user" class="text-xs font-semibold leading-tight text-[#101828]">{{ user.full_name || user.username }}</p>
+                <p v-if="user" class="mb-2 text-[10px] leading-tight text-[#7a8499]">{{ roleLabel(user.role) }}</p>
                 <div class="flex items-center gap-2" :title="connectionDot.label">
                   <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
-                  <span class="text-xs text-slate-300">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
+                  <span class="text-xs text-[#5b6780]">{{ connectionDot.online ? 'En línea' : 'Sin conexión' }}</span>
                 </div>
                 <button
                   v-if="canInstall"
                   class="btn-ghost mt-2 block w-full px-3 py-2 text-left text-xs"
                   @click="installApp"
                 >
-                  ⬇ Instalar app
+                  <Icon name="download" :size="13" /> Instalar app
                 </button>
                 <button
                   class="btn-ghost mt-2 block w-full px-3 py-2 text-left text-xs"
@@ -137,7 +147,7 @@ onMounted(() => {
                   data-testid="nav-logout"
                   @click="logout()"
                 >
-                  ⏻ Cerrar sesión
+                  <Icon name="power" :size="13" /> Cerrar sesión
                 </button>
               </div>
             </div>
@@ -151,37 +161,42 @@ onMounted(() => {
             title="Instalar SynapseCME como aplicación"
             @click="installApp"
           >
-            ⬇ Instalar app
+            <Icon name="download" :size="13" /> Instalar app
           </button>
-          <span class="glass-chip">
+          <span class="glass-chip" :class="connectionDot.chipCls">
             <span class="h-2 w-2 rounded-full transition" :class="connectionDot.cls" />
             {{ connectionDot.online ? 'En línea' : 'Sin conexión' }}
           </span>
         </div>
 
-        <div v-if="isAuthenticated && user" class="hidden items-center gap-2 border-l border-white/10 pl-3 lg:flex">
+        <div v-if="isAuthenticated && user" class="hidden items-center gap-3 border-l border-[#e3e8f2] pl-3 lg:flex">
           <div class="text-right">
-            <p class="text-xs font-semibold leading-tight text-white">{{ user.full_name || user.username }}</p>
-            <p class="text-[10px] leading-tight text-slate-400">{{ roleLabel(user.role) }}</p>
+            <p class="text-xs font-semibold leading-tight text-[#101828]">{{ user.full_name || user.username }}</p>
+            <p class="text-[10px] leading-tight text-[#7a8499]">{{ roleLabel(user.role) }}</p>
           </div>
+          <span class="grid h-9 w-9 place-items-center rounded-full bg-[#e8eefc] font-display text-xs font-semibold text-[#1d63d8]">
+            {{ userInitials }}
+          </span>
           <button class="btn-ghost px-3 py-1.5 text-xs" title="Cerrar sesión" @click="logout()">
-            ⏻ Cerrar sesión
+            <Icon name="power" :size="13" /> Cerrar sesión
           </button>
         </div>
       </nav>
     </header>
 
-    <main class="mx-auto w-full max-w-7xl px-4 pb-16 pt-6">
+    <main class="w-full px-7 pb-6 pt-6">
       <NuxtPage />
     </main>
 
     <Transition name="toast">
       <div
         v-if="toast.visible"
-        class="glass-strong toast-in fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 text-sm font-medium text-white"
+        class="glass-strong toast-in fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 text-sm font-medium text-[#101828]"
         role="status"
       >
-        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">✓</span>
+        <span class="grid h-6 w-6 place-items-center rounded-full bg-[#eefbf4] text-[#067647]">
+          <Icon name="check" :size="14" />
+        </span>
         {{ toast.text }}
       </div>
     </Transition>

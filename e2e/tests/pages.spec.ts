@@ -10,7 +10,7 @@ test.describe('vistas principales', () => {
   test('chat carga listo para preguntar o dictar', async ({ page }) => {
     await page.goto('/chat')
     await expect(page.getByRole('heading', { name: /captura agent-first/i })).toBeVisible()
-    await expect(page.getByText(/preguntá o dictá una observación/i)).toBeVisible()
+    await expect(page.getByText(/pregunta o dicta una observación/i)).toBeVisible()
   })
 
   test('métricas del modelo carga', async ({ page }) => {
@@ -27,11 +27,12 @@ test.describe('vistas principales', () => {
     await page.goto('/network')
     await expect(page.getByRole('heading', { name: /nodo principal/i })).toBeVisible()
 
-    // El núcleo reporta el estado de QVAC, STT y el grafo.
-    await expect(page.getByText(/inferencia qvac/i)).toBeVisible()
-    await expect(page.getByText('medpsy:q4_k_m', { exact: true })).toBeVisible()
+    // El núcleo reporta el estado de QVAC, STT y el grafo. (El panel se
+    // renderiza dos veces — overlay desktop + fallback móvil —: se toma el primero.)
+    await expect(page.getByText(/inferencia qvac/i).first()).toBeVisible()
+    await expect(page.getByText('medpsy:q4_k_m', { exact: true }).first()).toBeVisible()
     await expect(page.getByText(/EMBEDDINGGEMMA/i).first()).toBeVisible()
-    await expect(page.getByText(/faster-whisper/i)).toBeVisible()
+    await expect(page.getByText(/faster-whisper/i).first()).toBeVisible()
     await expect(page.getByText(/instalaciones/i).first()).toBeVisible()
 
     // El nodo principal está inyectado en el grafo (title nativo del nodo).

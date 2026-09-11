@@ -7,6 +7,7 @@ import type { EquipmentRef } from '~/components/EquipmentRefCard.vue'
 interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
+  time?: string
   extraction: Record<string, unknown> | null
   followup: string | null
   done: boolean
@@ -60,6 +61,14 @@ async function loadConversations() {
   }
 }
 
+function timeLabel(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date()
+  if (Number.isNaN(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `hoy · ${hh}:${mm}`
+}
+
 async function openConversation(id: string) {
   drawerOpen.value = false
   loadingHistory.value = true
@@ -73,6 +82,7 @@ async function openConversation(id: string) {
     messages.value = conv.messages.map((m) => ({
       role: m.role,
       text: m.content,
+      time: timeLabel(m.created_at),
       extraction: m.extraction ? normalizeExtraction(m.extraction) : null,
       followup: null,
       done: true,
@@ -427,7 +437,7 @@ async function send() {
   const text = input.value.trim()
   if (!text || sending.value) return
   input.value = ''
-  messages.value.push({ role: 'user', text, extraction: null, followup: null, done: true })
+  messages.value.push({ role: 'user', text, time: timeLabel(), extraction: null, followup: null, done: true })
   const msg = reactive<ChatMessage>({ role: 'assistant', text: '', extraction: null, followup: null, done: false, equipment: [], view: 'text' })
   messages.value.push(msg)
   sending.value = true
@@ -484,9 +494,9 @@ const confirmed = reactive<Record<number, boolean>>({})
 </script>
 
 <template>
-  <div class="flex h-[calc(100dvh-11rem)] gap-4">
+  <div class="flex h-[calc(100dvh-109px)] gap-6">
     <!-- Sidebar de conversaciones (desktop) -->
-    <aside class="glass hidden w-72 shrink-0 flex-col md:flex" aria-label="Conversaciones">
+    <aside class="glass hidden w-[280px] shrink-0 flex-col md:flex" aria-label="Conversaciones">
       <ConversationList
         :conversations="conversations"
         :active-id="activeConversationId"
@@ -500,74 +510,90 @@ const confirmed = reactive<Record<number, boolean>>({})
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <button class="btn-ghost px-3 py-1.5 md:hidden" @click="drawerOpen = true">
-            ☰ Conversaciones
+            <Icon name="menu" :size="15" /> Conversaciones
           </button>
           <div>
-            <h1 class="text-2xl font-bold text-white">Captura agent-first</h1>
-            <p class="mt-1 text-sm text-slate-400">
+            <h1 class="font-display text-[25px] font-bold text-[#101828]">Captura agent-first</h1>
+            <p class="mt-1 text-sm text-[#5b6780]">
               Describe en lenguaje natural el equipamiento instalado; el agente extrae la estructura al grafo.
             </p>
           </div>
         </div>
       <div class="flex flex-wrap items-center gap-2">
-        <span v-if="user" class="glass-chip border-emerald-300/30 bg-emerald-400/15 text-emerald-200">
-          ✍️ Capturando como {{ user.full_name || user.username }}
+        <span v-if="user" class="glass-chip border-[#bfe8d2] bg-[#eefbf4] text-[#067647]">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#17b26a]" />Capturando como {{ user.full_name || user.username }}
         </span>
-        <span class="glass-chip border-indigo-300/30 bg-indigo-400/15 text-indigo-200">
-          <span>💬</span> Preguntá o dictá una observación
+        <span class="glass-chip border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+          Pregunta o dicta una observación
         </span>
       </div>
     </div>
 
     <div
       v-if="apiOnline === false"
-      class="glass flex flex-wrap items-center justify-between gap-3 border-rose-300/25 bg-rose-400/10 px-4 py-3"
+      class="flex flex-wrap items-center gap-3 rounded-xl border border-[#f0d3d3] bg-[#fdf5f5] px-4 py-3"
     >
-      <p class="text-sm text-rose-200">
-        ⚠️ Servidor local no disponible. Los mensajes no podrán procesarse hasta que el backend responda.
+      <p class="flex flex-1 items-center gap-2.5 text-[13.5px] text-[#8a2018]">
+        <Icon name="alert" :size="17" class="shrink-0 text-[#d92d20]" />Servidor local no disponible. Las observaciones
+        quedan <b>en cola</b> hasta que el backend responda.
       </p>
-      <button class="btn-ghost" @click="refresh()">Reintentar</button>
+      <button class="btn-ghost border-[#f0d3d3] text-[#b42318] hover:bg-[#fdf0f0]" @click="refresh()">
+        <Icon name="refresh" :size="13" />Reintentar
+      </button>
     </div>
 
-    <div ref="listEl" class="glass flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <div v-if="!messages.length" class="m-auto max-w-md text-center text-sm text-slate-400">
-        <p class="text-4xl">🎙️</p>
-        <p class="mt-3">
+    <div ref="listEl" class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-1">
+      <div
+        v-if="!messages.length"
+        class="flex flex-1 flex-col items-center justify-center rounded-2xl border border-[#e3e8f2] bg-white px-10 py-12 text-center shadow-sm"
+      >
+        <span class="grid h-14 w-14 place-items-center rounded-full border border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+          <Icon name="mic" :size="22" />
+        </span>
+        <p class="mt-4 font-display text-[15px] font-semibold text-[#101828]">Dicta o escribe tu primera observación</p>
+        <p class="mt-2 max-w-[520px] text-[13.5px] leading-relaxed text-[#5b6780]">
           Ejemplo: «En el Hospital Aurora de Ciudad de Panamá hay 2 resonancias Siemens MAGNETOM Vida de 9 años, modalidad
           confirmada».
         </p>
-        <p class="mt-3 text-slate-500">¿Prefieres preguntar? Toca una sugerencia o escribe tu pregunta:</p>
+        <p class="mt-5 text-xs text-[#7a8499]">¿Prefieres preguntar? Toca una sugerencia:</p>
         <div class="mt-3 flex flex-wrap justify-center gap-2">
           <button
             v-for="q in questionExamples"
             :key="q.id"
-            class="glass-chip text-indigo-200 transition hover:border-indigo-300/50 hover:bg-indigo-400/20"
+            class="rounded-full border border-[#d5e4fb] bg-[#f4f8fe] px-4 py-2 text-[13px] font-medium text-[#1d63d8] transition hover:border-[#c4ddfb] hover:bg-[#eaf3fe]"
             @click="applyExample(q)"
           >
-            💬 {{ q.text }}
+            {{ q.text }}
           </button>
         </div>
       </div>
 
       <template v-for="(msg, i) in messages" :key="i">
-        <div v-if="msg.role === 'user'" class="ml-auto max-w-[80%] rounded-2xl rounded-br-md border border-indigo-300/25 bg-indigo-500/25 px-4 py-2.5 text-sm text-indigo-50 backdrop-blur-xl">
-          {{ msg.text }}
+        <div v-if="msg.role === 'user'" class="w-full rounded-2xl border border-[#e3e8f2] bg-white px-4 py-3.5 shadow-sm">
+          <div class="mb-2 flex items-center gap-2.5">
+            <span class="grid h-6 w-6 place-items-center rounded-full bg-[#eaf3fe] text-[#1d63d8]">
+              <Icon name="user" :size="12" />
+            </span>
+            <span class="text-xs font-semibold text-[#101828]">{{ user?.full_name || user?.username || 'Observador de campo' }}</span>
+            <span v-if="msg.time" class="text-[11.5px] text-[#98a2b8]">{{ msg.time }}</span>
+          </div>
+          <p class="text-sm leading-relaxed text-[#39445c]">{{ msg.text }}</p>
         </div>
 
         <div v-else class="mr-auto w-full max-w-[92%]">
           <span
             v-if="msg.tool"
-            class="glass-chip mb-2 inline-flex items-center gap-1.5 border-indigo-300/25 bg-indigo-400/10 text-indigo-200"
+            class="glass-chip mb-2 inline-flex items-center gap-1.5 border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]"
           >
-            <span class="animate-pulse">🔎</span> Consultando {{ TOOL_LABELS[msg.tool] || msg.tool }}…
+            <span class="animate-pulse"><Icon name="search" :size="13" /></span> Consultando {{ TOOL_LABELS[msg.tool] || msg.tool }}…
           </span>
           <div
-            class="rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm backdrop-blur-xl"
-            :class="msg.error ? 'border-rose-300/25 bg-rose-400/10 text-rose-200' : 'border-white/15 bg-white/10 text-slate-100'"
+            class="rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm"
+            :class="msg.error ? 'border-[#f0d3d3] bg-[#fdf5f5] text-[#8a2018]' : 'border-[#e3e8f2] bg-white text-[#1a2233]'"
             :data-testid="msg.answer ? 'assistant-answer' : undefined"
           >
             <span v-if="msg.text">{{ msg.text }}</span>
-            <span v-else-if="!msg.done" class="animate-pulse text-slate-400">El agente está procesando…</span>
+            <span v-else-if="!msg.done" class="animate-pulse text-[#98a2b8]">El agente está procesando…</span>
             <span v-if="sending && i === messages.length - 1 && !msg.text" class="animate-pulse">▌</span>
           </div>
 
@@ -575,19 +601,19 @@ const confirmed = reactive<Record<number, boolean>>({})
           <div v-if="msg.equipment && msg.equipment.length" class="mt-2 flex items-center gap-1.5">
             <button
               class="glass-chip text-[11px] transition"
-              :class="msg.view !== 'cards' ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-400'"
+              :class="msg.view !== 'cards' ? 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]' : 'text-[#7a8499]'"
               data-testid="view-mode-text"
               @click="msg.view = 'text'"
             >
-              💬 Texto
+              Texto
             </button>
             <button
               class="glass-chip text-[11px] transition"
-              :class="msg.view === 'cards' ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'text-slate-400'"
+              :class="msg.view === 'cards' ? 'border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]' : 'text-[#7a8499]'"
               data-testid="view-mode-cards"
               @click="msg.view = 'cards'"
             >
-              🃏 Tarjetas
+              Tarjetas
             </button>
           </div>
 
@@ -600,8 +626,8 @@ const confirmed = reactive<Record<number, boolean>>({})
             <EquipmentRefCard v-for="eq in msg.equipment" :key="eq.id" :eq="eq" />
           </div>
 
-          <div v-if="msg.followup" class="glass-strong mt-3 flex flex-wrap items-center justify-between gap-3 border-amber-300/25 bg-amber-400/10 px-4 py-3">
-            <p class="text-sm text-amber-100">
+          <div v-if="msg.followup" class="glass-strong mt-3 flex flex-wrap items-center justify-between gap-3 border-[#f2e2a8] bg-[#fffaeb] px-4 py-3">
+            <p class="text-sm text-[#8a6100]">
               <span class="font-semibold">Pregunta de seguimiento:</span> {{ msg.followup }}
             </p>
             <button class="btn-ghost shrink-0" @click="applyFollowup(msg.followup)">Responder</button>
@@ -609,24 +635,24 @@ const confirmed = reactive<Record<number, boolean>>({})
 
           <div v-if="msg.extraction && Object.keys(msg.extraction).length" class="glass-strong mt-3 p-4">
             <div class="flex items-center justify-between gap-2">
-              <h3 class="text-sm font-semibold text-white">Extracción estructurada</h3>
+              <h3 class="text-sm font-semibold text-[#101828]">Extracción estructurada</h3>
               <StateChip :estado="estadoValue(msg.extraction)" />
             </div>
             <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
               <template v-for="def in FIELD_DEFS" :key="def.key">
                 <div v-if="fieldValue(msg.extraction, def) !== undefined">
-                  <dt class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{{ def.label }}</dt>
-                  <dd class="mt-0.5 text-sm text-slate-100">{{ displayValue(def.key, fieldValue(msg.extraction, def)) }}</dd>
+                  <dt class="text-[11px] font-semibold uppercase tracking-wider text-[#7a8499]">{{ def.label }}</dt>
+                  <dd class="mt-0.5 text-sm text-[#1a2233]">{{ displayValue(def.key, fieldValue(msg.extraction, def)) }}</dd>
                 </div>
               </template>
             </dl>
             <div v-if="confidencePct(msg.extraction) !== null" class="mt-3">
-              <div class="flex justify-between text-[11px] text-slate-400">
+              <div class="flex justify-between text-[11px] text-[#7a8499]">
                 <span>Confianza</span><span>{{ confidencePct(msg.extraction)!.toFixed(0) }} %</span>
               </div>
-              <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-[#eef1f7]">
                 <div
-                  class="h-full rounded-full bg-gradient-to-r from-indigo-400 to-emerald-400 transition-all"
+                  class="h-full rounded-full bg-gradient-to-r from-[#1d63d8] to-[#17b26a] transition-all"
                   :style="{ width: `${confidencePct(msg.extraction)}%` }"
                 />
               </div>
@@ -638,7 +664,7 @@ const confirmed = reactive<Record<number, boolean>>({})
                 :title="msg.historical ? 'Este registro ya fue confirmado en su momento' : undefined"
                 @click="confirmed[i] = true; show('Registro confirmado')"
               >
-                {{ confirmed[i] ? '✓ Confirmado' : msg.historical ? 'Registro histórico' : 'Confirmar registro' }}
+                <Icon v-if="confirmed[i]" name="check" :size="14" />{{ confirmed[i] ? 'Confirmado' : msg.historical ? 'Registro histórico' : 'Confirmar registro' }}
               </button>
             </div>
           </div>
@@ -646,8 +672,8 @@ const confirmed = reactive<Record<number, boolean>>({})
       </template>
     </div>
 
-    <div class="glass p-4 pb-[max(env(safe-area-inset-bottom),env(keyboard-inset-bottom,0px))]">
-      <label for="capture" class="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+    <div class="glass-strong p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <label for="capture" class="mb-1.5 block font-display text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#1d63d8]">
         Captura rápida
       </label>
       <textarea
@@ -663,29 +689,31 @@ const confirmed = reactive<Record<number, boolean>>({})
       <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <button class="btn-ghost" :disabled="dictating || transcribing" @click="examplesOpen = true">
-            💡 Ejemplos
+            <Icon name="bulb" :size="15" /> Ejemplos
           </button>
           <button
             class="btn-ghost"
-            :class="dictating ? 'border-rose-300/40 bg-rose-400/20 text-rose-200' : ''"
+            :class="dictating ? 'border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]' : ''"
             :disabled="transcribing"
             :title="dictating ? 'Detener dictado' : 'Dictar con el micrófono'"
             @click="toggleDictation"
           >
-            <span :class="dictating ? 'animate-pulse' : ''">{{ dictating ? '■' : '🎙️' }}</span>
+            <span :class="dictating ? 'animate-pulse' : ''">
+              <Icon :name="dictating ? 'close' : 'mic'" :size="15" />
+            </span>
             {{ dictating ? 'Escuchando…' : transcribing ? 'Transcribiendo…' : 'Dictar' }}
           </button>
-          <span v-if="dictating" class="glass-chip border-rose-300/40 bg-rose-400/15 font-mono text-rose-200">
-            ⏱ {{ recordTimeLabel }}
+          <span v-if="dictating" class="glass-chip border-[#f5a9a9] bg-[#fdf0f0] font-mono text-[#b42318]">
+            <Icon name="timer" :size="13" /> {{ recordTimeLabel }}
           </span>
           <button v-if="dictating" class="btn-ghost px-3 py-1.5 text-xs" @click="cancelRecording">Cancelar</button>
-          <p v-else-if="!transcribing" class="hidden text-xs text-slate-500 sm:block">
+          <p v-else-if="!transcribing" class="hidden text-xs text-[#98a2b8] sm:block">
             Toca Dictar para grabar una observación
           </p>
         </div>
-        <p class="hidden text-xs text-slate-500 lg:block">Enter para enviar · Mayús+Enter para salto de línea</p>
+        <p class="hidden text-xs text-[#98a2b8] lg:block">Enter para enviar · Mayús+Enter para salto de línea</p>
         <button class="btn-primary min-w-36" :disabled="sending || !input.trim()" @click="send">
-          {{ sending ? 'Procesando…' : 'Enviar al agente' }}
+          {{ sending ? 'Procesando…' : 'Enviar al agente' }}<Icon v-if="!sending" name="send" :size="14" />
         </button>
       </div>
     </div>
@@ -694,7 +722,7 @@ const confirmed = reactive<Record<number, boolean>>({})
     <!-- Drawer de conversaciones (móvil) -->
     <Teleport to="body">
       <div v-if="drawerOpen" class="fixed inset-0 z-50 flex md:hidden">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="drawerOpen = false" />
+        <div class="absolute inset-0 bg-[#101828]/40 backdrop-blur-sm" @click="drawerOpen = false" />
         <div
           class="glass-strong relative m-0 flex h-full w-80 max-w-[85vw] flex-col p-0"
           role="dialog"
@@ -718,11 +746,13 @@ const confirmed = reactive<Record<number, boolean>>({})
     <!-- Priming de permiso de micrófono (solo la primera vez) -->
     <Teleport to="body">
       <div v-if="micModal === 'priming'" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="micModal = null" />
+        <div class="absolute inset-0 bg-[#101828]/40 backdrop-blur-sm" @click="micModal = null" />
         <div class="glass-strong relative w-full max-w-md p-6" role="dialog" aria-modal="true" aria-label="Permiso de micrófono">
-          <p class="text-3xl">🎙️</p>
-          <h2 class="mt-3 text-lg font-bold text-white">Permitir micrófono</h2>
-          <p class="mt-2 text-sm leading-relaxed text-slate-300">
+          <span class="grid h-12 w-12 place-items-center rounded-full border border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+            <Icon name="mic" :size="22" />
+          </span>
+          <h2 class="mt-3 text-lg font-bold text-[#101828]">Permitir micrófono</h2>
+          <p class="mt-2 text-sm leading-relaxed text-[#5b6780]">
             SynapseCME usa el micrófono para transcribir tus observaciones de campo a texto. El audio se envía al
             servidor local para transcribirse y no se guarda. El navegador te pedirá confirmar el permiso.
           </p>
@@ -735,13 +765,15 @@ const confirmed = reactive<Record<number, boolean>>({})
 
       <!-- Permiso denegado: instrucciones accionables, sin reintentos ciegos -->
       <div v-else-if="micModal === 'denied'" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="micModal = null" />
+        <div class="absolute inset-0 bg-[#101828]/40 backdrop-blur-sm" @click="micModal = null" />
         <div class="glass-strong relative w-full max-w-md p-6" role="dialog" aria-modal="true" aria-label="Micrófono bloqueado">
-          <p class="text-3xl">🚫</p>
-          <h2 class="mt-3 text-lg font-bold text-white">Micrófono bloqueado</h2>
-          <p class="mt-2 text-sm leading-relaxed text-slate-300">
+          <span class="grid h-12 w-12 place-items-center rounded-full border border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]">
+            <Icon name="mic-off" :size="22" />
+          </span>
+          <h2 class="mt-3 text-lg font-bold text-[#101828]">Micrófono bloqueado</h2>
+          <p class="mt-2 text-sm leading-relaxed text-[#5b6780]">
             El permiso de micrófono está denegado. Para volver a dictar, habilítalo en la configuración del sitio:
-            toca el icono 🔒 de la barra de direcciones, cambia el permiso de micrófono a «Permitir» y recarga la
+            toca el candado de la barra de direcciones, cambia el permiso de micrófono a «Permitir» y recarga la
             página.
           </p>
           <div class="mt-5 flex justify-end">

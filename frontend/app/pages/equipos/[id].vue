@@ -192,16 +192,18 @@ function paramClass(status?: string | null): string {
   <div class="flex flex-col gap-4">
     <button class="btn-ghost self-start" @click="navigateTo('/dashboard')">← Volver al panel</button>
 
-    <div v-if="loading" class="glass p-10 text-center text-sm text-slate-400">
+    <div v-if="loading" class="glass p-10 text-center text-sm text-[#7a8499]">
       <span class="animate-pulse">Cargando equipo…</span>
     </div>
 
     <ApiUnavailable v-else-if="failed" @retry="load" />
 
     <div v-else-if="notFound" class="glass mx-auto max-w-md p-8 text-center">
-      <p class="text-4xl">🔍</p>
-      <h1 class="mt-3 text-xl font-bold text-white">Equipo no encontrado</h1>
-      <p class="mt-2 text-sm text-slate-400">
+      <span class="mx-auto grid h-14 w-14 place-items-center rounded-full border border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+        <Icon name="search" :size="26" />
+      </span>
+      <h1 class="mt-3 font-display text-xl font-bold text-[#101828]">Equipo no encontrado</h1>
+      <p class="mt-2 text-sm text-[#5b6780]">
         No existe un equipo con el identificador «{{ equipmentId }}» en el grafo.
       </p>
       <button class="btn-primary mt-5" @click="navigateTo('/dashboard')">Volver al panel</button>
@@ -211,9 +213,10 @@ function paramClass(status?: string | null): string {
       <div class="glass-strong p-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
-            <h1 class="text-xl font-bold text-white">{{ title }}</h1>
-            <p class="mt-1 text-sm text-slate-400">
-              🏥 {{ equipment.facilityName
+            <h1 class="font-display text-xl font-bold text-[#101828]">{{ title }}</h1>
+            <p class="mt-1 flex items-center gap-1.5 text-sm text-[#5b6780]">
+              <Icon name="hospital" :size="14" class="shrink-0 text-[#1d63d8]" />
+              {{ equipment.facilityName
               }}<span v-if="equipment.city || equipment.country">
                 · {{ [equipment.city, equipment.country].filter(Boolean).join(', ') }}
               </span>
@@ -229,50 +232,52 @@ function paramClass(status?: string | null): string {
 
       <div
         v-if="hasIssues"
-        class="glass flex items-center gap-3 border-amber-300/30 bg-amber-400/10 px-4 py-3"
+        class="glass flex items-center gap-3 border-[#f2e2a8] bg-[#fffaeb] px-4 py-3"
       >
-        <span class="text-xl">⚠️</span>
-        <p class="text-sm text-amber-200">Posible mantenimiento/reparación: hay parámetros fuera de rango.</p>
+        <Icon name="alert" :size="18" class="shrink-0 text-[#d99a00]" />
+        <p class="text-sm text-[#8a6100]">Posible mantenimiento/reparación: hay parámetros fuera de rango.</p>
       </div>
 
       <!-- Mini-chat de revisión: el agente actualiza esta ficha -->
       <section class="glass p-5" data-testid="equipment-chat">
-        <h2 class="text-sm font-semibold text-white">Revisar con el agente</h2>
-        <p class="mt-0.5 text-xs text-slate-500">
+        <h2 class="font-display text-sm font-semibold text-[#101828]">Revisar con el agente</h2>
+        <p class="mt-0.5 text-xs text-[#7a8499]">
           Contale una corrección o medición de este equipo (marca, modelo, parámetros); el agente actualiza su ficha.
         </p>
 
         <div ref="chatListEl" class="mt-3 flex max-h-72 min-h-16 flex-col gap-3 overflow-y-auto pr-1">
           <div v-if="!chatMessages.length" class="flex flex-wrap items-center gap-2">
-            <span class="text-xs text-slate-500">Ejemplos:</span>
+            <span class="text-xs text-[#7a8499]">Ejemplos:</span>
             <button
               v-for="s in REVISION_SUGGESTIONS"
               :key="s"
-              class="glass-chip text-indigo-200 transition hover:border-indigo-300/50 hover:bg-indigo-400/20"
+              class="glass-chip rounded-full border-[#d5e4fb] bg-[#f4f8fe] text-[#1d63d8] transition hover:border-[#c4ddfb] hover:bg-[#eaf3fe]"
               @click="sendRevision(s)"
             >
-              💬 {{ s }}
+              <Icon name="message" :size="12" class="shrink-0" />
+              {{ s }}
             </button>
           </div>
 
           <template v-for="(msg, i) in chatMessages" :key="i">
             <div
               v-if="msg.role === 'user'"
-              class="ml-auto max-w-[80%] rounded-2xl rounded-br-md border border-indigo-300/25 bg-indigo-500/25 px-4 py-2.5 text-sm text-indigo-50 backdrop-blur-xl"
+              class="ml-auto max-w-[80%] rounded-2xl rounded-br-md border border-[#c4ddfb] bg-[#eaf3fe] px-4 py-2.5 text-sm text-[#101828]"
             >
               {{ msg.text }}
             </div>
             <div v-else class="mr-auto w-full max-w-[92%]">
               <div
-                class="rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm backdrop-blur-xl"
-                :class="msg.error ? 'border-rose-300/25 bg-rose-400/10 text-rose-200' : 'border-white/15 bg-white/10 text-slate-100'"
+                class="rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm"
+                :class="msg.error ? 'border-[#f0d3d3] bg-[#fdf5f5] text-[#8a2018]' : 'border-[#e3e8f2] bg-white text-[#1a2233]'"
                 data-testid="equipment-chat-answer"
               >
                 <span v-if="msg.text">{{ msg.text }}</span>
-                <span v-else-if="!msg.done" class="animate-pulse text-slate-400">El agente está procesando…</span>
+                <span v-else-if="!msg.done" class="animate-pulse text-[#7a8499]">El agente está procesando…</span>
                 <div v-if="msg.identified.length" class="mt-2 flex flex-wrap gap-1.5">
-                  <span v-for="bit in msg.identified" :key="bit" class="glass-chip border-emerald-300/30 bg-emerald-400/15 text-emerald-200">
-                    ✏️ {{ bit }}
+                  <span v-for="bit in msg.identified" :key="bit" class="glass-chip border-[#bfe8d2] bg-[#eefbf4] text-[#067647]">
+                    <Icon name="edit" :size="11" class="shrink-0" />
+                    {{ bit }}
                   </span>
                 </div>
                 <div v-if="msg.params.length" class="mt-2 flex flex-wrap gap-1.5">
@@ -288,10 +293,11 @@ function paramClass(status?: string | null): string {
               </div>
               <button
                 v-if="msg.followup"
-                class="glass-chip mt-2 text-indigo-200 transition hover:border-indigo-300/50 hover:bg-indigo-400/20"
+                class="glass-chip mt-2 rounded-full border-[#d5e4fb] bg-[#f4f8fe] text-[#1d63d8] transition hover:border-[#c4ddfb] hover:bg-[#eaf3fe]"
                 @click="applyFollowup(msg.followup as string)"
               >
-                💬 {{ msg.followup }}
+                <Icon name="message" :size="12" class="shrink-0" />
+                {{ msg.followup }}
               </button>
             </div>
           </template>
@@ -300,13 +306,13 @@ function paramClass(status?: string | null): string {
         <div class="mt-3 flex items-end gap-2">
           <button
             class="btn-ghost shrink-0 px-3 py-2.5"
-            :class="dictation.dictating.value ? 'border-rose-300/40 bg-rose-400/20 text-rose-200' : ''"
+            :class="dictation.dictating.value ? 'border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]' : ''"
             :disabled="sending || dictation.transcribing.value"
             :title="dictation.dictating.value ? 'Detener dictado' : 'Dictar con el micrófono'"
             @click="dictation.toggle()"
           >
             <span :class="dictation.dictating.value ? 'animate-pulse' : ''">
-              {{ dictation.dictating.value ? '■' : '🎙️' }}
+              <Icon :name="dictation.dictating.value ? 'close' : 'mic'" :size="16" />
             </span>
             <span class="hidden sm:inline">
               {{ dictation.dictating.value ? 'Escuchando…' : dictation.transcribing.value ? 'Transcribiendo…' : 'Dictar' }}
@@ -314,7 +320,7 @@ function paramClass(status?: string | null): string {
           </button>
           <span
             v-if="dictation.dictating.value"
-            class="glass-chip shrink-0 border-rose-300/40 bg-rose-400/15 font-mono text-rose-200"
+            class="glass-chip shrink-0 border-[#f5a9a9] bg-[#fdf0f0] font-mono text-[#b42318]"
           >
             {{ dictation.recordTimeLabel.value }}
           </span>
@@ -342,14 +348,16 @@ function paramClass(status?: string | null): string {
         <!-- Modal de permiso de micrófono (previo al primer uso) -->
         <div
           v-if="dictation.micModal.value === 'priming'"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/40 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
         >
           <div class="glass-strong w-full max-w-sm p-6 text-center">
-            <p class="text-4xl">🎙️</p>
-            <h3 class="mt-3 text-lg font-bold text-white">Permiso de micrófono</h3>
-            <p class="mt-2 text-sm text-slate-400">
+            <span class="mx-auto grid h-12 w-12 place-items-center rounded-full border border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
+              <Icon name="mic" :size="22" />
+            </span>
+            <h3 class="mt-3 text-lg font-bold text-[#101828]">Permiso de micrófono</h3>
+            <p class="mt-2 text-sm text-[#5b6780]">
               Para dictar revisiones necesitamos acceso al micrófono. Tu navegador te pedirá confirmación.
             </p>
             <div class="mt-5 flex justify-center gap-2">
@@ -362,14 +370,16 @@ function paramClass(status?: string | null): string {
         <!-- Modal de micrófono denegado -->
         <div
           v-if="dictation.micModal.value === 'denied'"
-          class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/40 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
         >
           <div class="glass-strong w-full max-w-sm p-6 text-center">
-            <p class="text-4xl">🚫</p>
-            <h3 class="mt-3 text-lg font-bold text-white">Micrófono bloqueado</h3>
-            <p class="mt-2 text-sm text-slate-400">
+            <span class="mx-auto grid h-12 w-12 place-items-center rounded-full border border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]">
+              <Icon name="mic-off" :size="22" />
+            </span>
+            <h3 class="mt-3 text-lg font-bold text-[#101828]">Micrófono bloqueado</h3>
+            <p class="mt-2 text-sm text-[#5b6780]">
               El permiso de micrófono está denegado. Para volver a dictar, habilítalo en la configuración del sitio:
               toca el candado de la barra de direcciones → Permisos → Micrófono → Permitir.
             </p>
@@ -381,20 +391,20 @@ function paramClass(status?: string | null): string {
       </section>
 
       <section class="glass p-5">
-        <h2 class="text-sm font-semibold text-white">Parámetros</h2>
-        <p class="mt-0.5 text-xs text-slate-500">Último valor registrado por magnitud técnica.</p>
+        <h2 class="font-display text-sm font-semibold text-[#101828]">Parámetros</h2>
+        <p class="mt-0.5 text-xs text-[#7a8499]">Último valor registrado por magnitud técnica.</p>
         <ul v-if="parameters.length" class="mt-3 flex flex-col gap-2">
           <li
             v-for="p in parameters"
             :key="p.id"
-            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e9edf5] bg-[#f7f9fd] px-3 py-2"
           >
             <div class="min-w-0">
-              <p class="text-sm capitalize text-slate-200">{{ p.name }}</p>
-              <p class="text-[11px] text-slate-500">{{ relativeDate(p.createdAt) }}</p>
+              <p class="text-sm capitalize text-[#1a2233]">{{ p.name }}</p>
+              <p class="text-[11px] text-[#7a8499]">{{ relativeDate(p.createdAt) }}</p>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-sm font-semibold text-white">{{ paramValue(p) }}</span>
+              <span class="text-sm font-semibold text-[#101828]">{{ paramValue(p) }}</span>
               <span v-if="p.status" class="glass-chip" :class="PARAMETER_STATUS_CLASSES[p.status]">
                 {{ PARAMETER_STATUS_LABELS[p.status] }}
               </span>
@@ -402,21 +412,27 @@ function paramClass(status?: string | null): string {
             </div>
           </li>
         </ul>
-        <p v-else class="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-center text-xs text-slate-500">
+        <p v-else class="mt-3 rounded-xl border border-dashed border-[#d4dbe8] p-4 text-center text-xs text-[#7a8499]">
           Todavía no hay parámetros registrados para este equipo.
         </p>
       </section>
 
       <section class="glass p-5">
-        <h2 class="text-sm font-semibold text-white">Historial de observaciones</h2>
-        <p class="mt-0.5 text-xs text-slate-500">{{ observations.length }} observaciones en el grafo.</p>
-        <ol v-if="observations.length" class="mt-4 flex flex-col gap-4 border-l border-white/10 pl-4">
+        <h2 class="font-display text-sm font-semibold text-[#101828]">Historial de observaciones</h2>
+        <p class="mt-0.5 text-xs text-[#7a8499]">{{ observations.length }} observaciones en el grafo.</p>
+        <ol v-if="observations.length" class="mt-4 flex flex-col gap-4 border-l border-[#e3e8f2] pl-4">
           <li v-for="obs in observations" :key="obs.id" class="relative">
-            <span class="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border border-indigo-300/40 bg-indigo-400/60" />
-            <p class="text-sm leading-relaxed text-slate-200">{{ obs.text }}</p>
-            <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-              <span class="glass-chip">👤 {{ obs.contributor }}</span>
-              <span class="glass-chip">🕒 {{ relativeDate(obs.createdAt) }}</span>
+            <span class="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border border-[#c4ddfb] bg-[#1d63d8]" />
+            <p class="text-sm leading-relaxed text-[#1a2233]">{{ obs.text }}</p>
+            <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[#7a8499]">
+              <span class="glass-chip">
+                <Icon name="user" :size="11" class="shrink-0" />
+                {{ obs.contributor }}
+              </span>
+              <span class="glass-chip">
+                <Icon name="clock" :size="11" class="shrink-0" />
+                {{ relativeDate(obs.createdAt) }}
+              </span>
               <span v-if="obs.confidence !== null" class="glass-chip">
                 Confianza {{ Math.round(obs.confidence * 100) }}%
               </span>
@@ -433,7 +449,7 @@ function paramClass(status?: string | null): string {
             </div>
           </li>
         </ol>
-        <p v-else class="mt-3 rounded-xl border border-dashed border-white/15 p-4 text-center text-xs text-slate-500">
+        <p v-else class="mt-3 rounded-xl border border-dashed border-[#d4dbe8] p-4 text-center text-xs text-[#7a8499]">
           Sin observaciones registradas todavía.
         </p>
       </section>

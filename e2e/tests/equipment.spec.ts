@@ -8,9 +8,9 @@ async function openHospitalAurora(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: /panel 360/i })).toBeVisible()
   // Expandir todas las regiones y países (el árbol arranca colapsado) hasta
   // poder clicar la instalación, esté en la región que esté.
-  for (const btn of await page.locator('button', { hasText: '🌍' }).all()) await btn.click()
-  for (const btn of await page.locator('button', { hasText: '🏳️' }).all()) await btn.click()
-  await page.locator('button', { hasText: '🏥 Hospital Aurora' }).first().click()
+  for (const btn of await page.getByTestId('tree-region').all()) await btn.click()
+  for (const btn of await page.getByTestId('tree-country').all()) await btn.click()
+  await page.getByTestId('tree-facility').filter({ hasText: 'Hospital Aurora' }).first().click()
   await expect(page.getByRole('heading', { name: 'Hospital Aurora' })).toBeVisible()
 }
 
@@ -89,6 +89,6 @@ test.describe('filtros del dashboard', () => {
     await expect(page.getByText(/equipos \(global\)/)).toBeVisible()
     await expect(page.getByTestId('equipment-item').first()).toBeVisible()
     // Cada ítem global muestra su instalación.
-    await expect(page.getByTestId('equipment-item').first().locator('p').nth(1)).toContainText('🏥')
+    await expect(page.getByTestId('equipment-item').first().locator('p').nth(1)).not.toBeEmpty()
   })
 })
