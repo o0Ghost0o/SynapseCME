@@ -144,7 +144,7 @@ services:
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-synapse-local-dev}
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse-local-dev}@postgres:5432/${POSTGRES_DB:-synapse_state}
-      QVAC_BASE_URL: http://qvac:11434
+      QVAC_BASE_URL: ${QVAC_BASE_URL:-http://4.0.0.3:11434}
       STT_BASE_URL: http://stt:8000
       MEDPSY_MODEL: ${MEDPSY_MODEL:-medpsy:q4_k_m}
       EMBED_MODEL: ${EMBED_MODEL:-EMBEDDINGGEMMA_300M_Q4_0}

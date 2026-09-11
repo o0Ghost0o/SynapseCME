@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     neo4j_password: str = "synapse-local-dev"
     postgres_dsn: str = "postgresql://synapse:synapse-local-dev@localhost:5432/synapse_state"
 
-    qvac_base_url: str = "http://localhost:11434"
+    qvac_base_url: str = "http://4.0.0.3:11434"
     medpsy_model: str = "medpsy:q4_k_m"
     # QVAC SDK constant (built-in, verified to load). bge-m3 also works but
     # only through a GGUF the QVAC embeddings addon accepts (drop it in

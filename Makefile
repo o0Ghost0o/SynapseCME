@@ -63,7 +63,7 @@ backend: ## Run FastAPI backend natively on http://127.0.0.1:8000
 	export RAG_DIR="$(PWD)/volumes/rag" && \
 	export POSTGRES_DSN="$${POSTGRES_DSN:-postgresql://synapse:synapse-local-dev@127.0.0.1:5432/synapse_state}" && \
 	export NEO4J_URI="$${NEO4J_URI:-bolt://127.0.0.1:7687}" && \
-	export QVAC_BASE_URL="$${QVAC_BASE_URL:-http://127.0.0.1:11434}" && \
+	export QVAC_BASE_URL="$${QVAC_BASE_URL:-http://4.0.0.3:11434}" && \
 	mkdir -p "$$RAG_DIR" && \
 	uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --reload
 

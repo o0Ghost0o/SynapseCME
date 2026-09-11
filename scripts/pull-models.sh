@@ -6,7 +6,7 @@
 # currently serves.
 set -euo pipefail
 
-QVAC_URL="${QVAC_URL:-http://localhost:11434}"
+QVAC_URL="${QVAC_URL:-${QVAC_BASE_URL:-http://4.0.0.3:11434}}"
 
 echo ">> models served by $QVAC_URL:"
 curl -sf "$QVAC_URL/v1/models" | jq .

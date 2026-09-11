@@ -42,13 +42,16 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 # 1) Check QVAC inference server ----------------------------------------------
-if command -v qvac >/dev/null 2>&1 || [ -f "/opt/homebrew/bin/qvac" ]; then
+QVAC_BASE_URL="${QVAC_BASE_URL:-http://4.0.0.3:11434}"
+if [[ "$QVAC_BASE_URL" != *"127.0.0.1"* && "$QVAC_BASE_URL" != *"localhost"* ]]; then
+    echo -e "${GREEN}>> Using remote QVAC inference host at $QVAC_BASE_URL${NC}"
+elif command -v qvac >/dev/null 2>&1 || [ -f "$HOME/.local/bin/qvac" ] || [ -f "$HOME/.bun/bin/qvac" ]; then
     echo -e "${GREEN}>> Starting native QVAC server (Apple Silicon Metal GPU) on :11434...${NC}"
     "$REPO_ROOT/scripts/qvac-mac-host-serve.sh" &
     PIDS+=($!)
 else
     echo -e "${YELLOW}>> 'qvac' CLI not installed yet. Skipping local inference server.${NC}"
-    echo -e "${YELLOW}   (Run 'bun install -g @qvac/cli' or 'npm install -g @qvac/cli' to enable Metal GPU inference.)${NC}"
+    echo -e "${YELLOW}   (Run 'bun install -g @qvac/cli' to enable Metal GPU inference.)${NC}"
 fi
 
 # 2) Check database connectivity (informational) ------------------------------
@@ -71,7 +74,7 @@ echo -e "${GREEN}>> Starting FastAPI backend on http://127.0.0.1:8000...${NC}"
     export RAG_DIR="${REPO_ROOT}/volumes/rag"
     export POSTGRES_DSN="${POSTGRES_DSN:-postgresql://synapse:synapse-local-dev@127.0.0.1:5432/synapse_state}"
     export NEO4J_URI="${NEO4J_URI:-bolt://127.0.0.1:7687}"
-    export QVAC_BASE_URL="${QVAC_BASE_URL:-http://127.0.0.1:11434}"
+    export QVAC_BASE_URL="${QVAC_BASE_URL:-http://4.0.0.3:11434}"
     mkdir -p "$RAG_DIR"
     exec uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --reload
 ) &
@@ -105,7 +108,7 @@ echo -e "${GREEN}  SynapseCME is running!${NC}"
 echo -e "  - Public Gateway: ${CYAN}http://localhost:3000${NC} (if Caddy installed)"
 echo -e "  - Frontend direct: ${CYAN}http://localhost:3001${NC}"
 echo -e "  - Backend API:    ${CYAN}http://localhost:8000/api/health${NC}"
-echo -e "  - QVAC Metal GPU: ${CYAN}http://localhost:11434/v1/models${NC}"
+echo -e "  - QVAC Inference: ${CYAN}${QVAC_BASE_URL}/v1/models${NC}"
 echo -e "${CYAN}=====================================================${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop all services.${NC}"
 echo ""

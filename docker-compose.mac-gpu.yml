@@ -18,6 +18,6 @@
 services:
   backend:
     environment:
-      QVAC_BASE_URL: http://host.docker.internal:11434
+      QVAC_BASE_URL: ${QVAC_BASE_URL:-http://4.0.0.3:11434}
     extra_hosts:
       - "host.docker.internal:host-gateway"
