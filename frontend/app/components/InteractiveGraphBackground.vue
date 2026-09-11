@@ -273,9 +273,22 @@ function updatePhysics(timestamp: number) {
         node.vy = 0
       }
     } else {
-      // Subtle organic settling to target
-      node.x += (targetX - node.x) * 0.1
-      node.y += (targetY - node.y) * 0.1
+      let desiredX = targetX
+      let desiredY = targetY
+
+      if (mousePos && !isDragged) {
+        const distToMouse = Math.hypot(node.x - mousePos.x, node.y - mousePos.y)
+        const magnetRadius = 85
+        if (distToMouse < magnetRadius) {
+          const pull = (1 - distToMouse / magnetRadius) * 22
+          const angle = Math.atan2(mousePos.y - node.y, mousePos.x - node.x)
+          desiredX += Math.cos(angle) * pull
+          desiredY += Math.sin(angle) * pull
+        }
+      }
+
+      node.x += (desiredX - node.x) * 0.1
+      node.y += (desiredY - node.y) * 0.1
     }
   })
 }
