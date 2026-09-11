@@ -21,14 +21,8 @@ const navLinks = computed(() => {
 const route = useRoute()
 const menuOpen = ref(false)
 
-// Instalación PWA: el módulo captura beforeinstallprompt y expone el prompt.
-const { $pwa } = useNuxtApp()
-const canInstall = computed(
-  () => !!$pwa && !$pwa.isInstalled && $pwa.isInstallable === true,
-)
-async function installApp() {
-  await $pwa?.showInstallPrompt()
-}
+// Instalación PWA: detecta instalación nativa y maneja el prompt en todos los navegadores
+const { canInstall, installApp, showIosInstructions } = usePwaInstall()
 watch(
   () => route.fullPath,
   () => {
@@ -76,6 +70,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <VitePwaManifest />
   <div class="min-h-screen">
     <header v-if="route.path !== '/login' && !route.path.startsWith('/deck')" class="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur-md">
       <nav class="relative mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
@@ -199,6 +194,36 @@ onMounted(() => {
           <Icon name="check" :size="14" />
         </span>
         {{ toast.text }}
+      </div>
+    </Transition>
+
+    <!-- Modal de ayuda para instalación en iOS / Safari -->
+    <Transition name="fade">
+      <div
+        v-if="showIosInstructions"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+        @click.self="showIosInstructions = false"
+      >
+        <div class="glass-strong relative max-w-sm w-full rounded-2xl p-6 shadow-2xl text-center bg-white">
+          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#e8eefc] text-[#1d63d8]">
+            <Icon name="download" :size="22" />
+          </div>
+          <h3 class="text-base font-semibold text-[#101828]">Instalar en iPhone / iPad</h3>
+          <p class="mt-2 text-xs leading-relaxed text-[#5b6780]">
+            Para instalar SynapseCME en tu pantalla de inicio desde Safari:
+          </p>
+          <ol class="mt-4 text-left text-xs leading-relaxed text-[#344054] space-y-2.5 list-decimal list-inside rounded-xl bg-[#f8fafc] p-3.5 border border-[#e3e8f2]">
+            <li>Toca el botón <strong>Compartir</strong> en la barra inferior (icono de un recuadro con flecha hacia arriba).</li>
+            <li>Desliza hacia abajo y pulsa <strong>«Agregar al inicio»</strong>.</li>
+            <li>Confirma tocando <strong>«Agregar»</strong> en la esquina superior derecha.</li>
+          </ol>
+          <button
+            class="btn-primary mt-5 w-full py-2.5 text-xs font-semibold"
+            @click="showIosInstructions = false"
+          >
+            Entendido
+          </button>
+        </div>
       </div>
     </Transition>
   </div>

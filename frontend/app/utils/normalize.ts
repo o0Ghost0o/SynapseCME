@@ -2,6 +2,7 @@
    aceptamos varias formas de respuesta y las llevamos a una forma conocida. */
 
 import { formatClientRelative } from './date'
+import { formatEvidenceUrl } from './evidence'
 
 export interface HierarchyItem {
   id: string
@@ -196,7 +197,7 @@ export function normalizeEquipmentDetail(data: unknown): EquipmentDetailData {
       text: String(oo.text ?? ''),
       confidence: Number.isFinite(confidence) ? confidence : null,
       createdAt: String(oo.created_at ?? ''),
-      evidence: oo.evidence ? String(oo.evidence) : null,
+      evidence: oo.evidence ? formatEvidenceUrl(String(oo.evidence)) : null,
     }
   })
   return {

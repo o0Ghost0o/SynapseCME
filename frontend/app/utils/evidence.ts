@@ -43,3 +43,29 @@ export async function compressImage(
     reader.readAsDataURL(file)
   })
 }
+
+/**
+ * Normaliza y resuelve la URL de una foto de evidencia.
+ * Soporta de forma resiliente:
+ * - Data URLs base64 ('data:image/...')
+ * - URLs absolutas ('http://...', 'https://...')
+ * - Rutas de API ya formadas ('/api/evidence/ev_...')
+ * - Rutas malformadas con prefijo duplicado ('/api/evidence//api/evidence/ev_...')
+ * - Nombres de archivo puros ('ev_...')
+ */
+export function formatEvidenceUrl(evidence?: string | null): string {
+  if (!evidence) return ''
+  const trimmed = String(evidence).trim()
+  if (!trimmed) return ''
+  if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed
+  }
+
+  // Extraer el nombre de archivo limpio de cualquier ruta o subruta
+  const parts = trimmed.split('/').filter(Boolean)
+  const filename = parts.pop()
+  if (filename && (filename.startsWith('ev_') || !filename.includes(':'))) {
+    return `/api/evidence/${filename}`
+  }
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+}

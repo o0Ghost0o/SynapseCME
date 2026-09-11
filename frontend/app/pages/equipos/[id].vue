@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatEvidenceUrl } from '~/utils/evidence'
 const route = useRoute()
 const { fetchWithAuth } = useApi()
 const { show } = useToast()
@@ -605,7 +606,7 @@ function paramClass(status?: string | null): string {
             <p class="text-sm leading-relaxed text-[#1a2233]">{{ obs.text }}</p>
             <div v-if="obs.evidence" class="mt-2">
               <img
-                :src="obs.evidence.startsWith('data:') || obs.evidence.startsWith('http') ? obs.evidence : `/api/evidence/${obs.evidence}`"
+                :src="formatEvidenceUrl(obs.evidence)"
                 alt="Evidencia fotográfica"
                 class="max-h-36 rounded-lg border border-[#c4ddfb] object-cover cursor-pointer transition hover:opacity-90 shadow-sm"
                 @click="lightboxImage = obs.evidence"
@@ -651,7 +652,7 @@ function paramClass(status?: string | null): string {
       >
         <div class="relative max-h-[90vh] max-w-[90vw]" @click.stop>
           <img
-            :src="lightboxImage.startsWith('data:') || lightboxImage.startsWith('http') ? lightboxImage : `/api/evidence/${lightboxImage}`"
+            :src="formatEvidenceUrl(lightboxImage)"
             alt="Evidencia fotográfica completa"
             class="max-h-[85vh] max-w-[85vw] rounded-xl object-contain shadow-2xl"
           />
