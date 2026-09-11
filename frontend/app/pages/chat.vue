@@ -4,7 +4,7 @@ import { EXAMPLE_CATEGORIES, type ExampleItem } from '~/utils/examples'
 import type { ConversationSummary } from '~/components/ConversationList.vue'
 import type { EquipmentRef } from '~/components/EquipmentRefCard.vue'
 import { formatClientRelative, getClientISOString, getClientTimezone } from '~/utils/date'
-import { compressImage } from '~/utils/evidence'
+import { compressImage, formatEvidenceUrl } from '~/utils/evidence'
 import { useChatQueue } from '~/composables/useChatQueue'
 
 interface ChatMessage {
@@ -806,7 +806,7 @@ const confirmed = reactive<Record<number, boolean>>({})
           <p v-if="msg.text" class="text-sm leading-relaxed text-[#39445c]">{{ msg.text }}</p>
           <div v-if="msg.evidence" class="mt-2.5">
             <img
-              :src="msg.evidence.startsWith('data:') || msg.evidence.startsWith('http') ? msg.evidence : `/api/evidence/${msg.evidence}`"
+              :src="formatEvidenceUrl(msg.evidence)"
               alt="Evidencia fotográfica"
               class="max-h-48 rounded-xl border border-[#c4ddfb] object-cover cursor-pointer transition hover:opacity-90 shadow-sm"
               @click="lightboxImage = msg.evidence"
@@ -1108,7 +1108,7 @@ const confirmed = reactive<Record<number, boolean>>({})
       >
         <div class="relative max-h-[90vh] max-w-[90vw]" @click.stop>
           <img
-            :src="lightboxImage.startsWith('data:') || lightboxImage.startsWith('http') ? lightboxImage : `/api/evidence/${lightboxImage}`"
+            :src="formatEvidenceUrl(lightboxImage)"
             alt="Evidencia fotográfica completa"
             class="max-h-[85vh] max-w-[85vw] rounded-xl object-contain shadow-2xl"
           />

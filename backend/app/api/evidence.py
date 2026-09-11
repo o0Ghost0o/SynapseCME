@@ -28,8 +28,15 @@ def save_evidence_base64(raw: str) -> str:
     if not raw or not raw.strip():
         return ""
     text = raw.strip()
-    if text.startswith("/api/evidence/") or text.startswith("http://") or text.startswith("https://"):
+    if text.startswith("http://") or text.startswith("https://"):
         return text
+    if "/api/evidence/" in text:
+        clean_name = Path(text).name
+        if clean_name.startswith("ev_"):
+            return f"/api/evidence/{clean_name}"
+        return text
+    if text.startswith("ev_") and "." in text:
+        return f"/api/evidence/{text}"
 
     # Extract base64 payload from data URL if present
     match = re.match(r"^data:image\/([a-zA-Z0-9]+);base64,(.+)$", text, re.DOTALL)
@@ -60,12 +67,12 @@ def save_evidence_base64(raw: str) -> str:
         return ""
 
 
-@router.get("/api/evidence/{filename}")
+@router.get("/api/evidence/{filename:path}")
 async def get_evidence(filename: str) -> FileResponse:
     """Serve an uploaded evidence photo."""
-    # Prevent path traversal
+    # Prevent path traversal and safely extract the filename
     safe_name = Path(filename).name
-    if safe_name != filename:
+    if not safe_name or safe_name.startswith(".") or ".." in filename:
         raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
 
     target_path = _ensure_dir() / safe_name
@@ -73,7 +80,13 @@ async def get_evidence(filename: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Evidencia no encontrada")
 
     ext = target_path.suffix.lower()
-    media_type = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png" if ext == ".png" else "application/octet-stream"
+    media_type = (
+        "image/jpeg"
+        if ext in (".jpg", ".jpeg")
+        else "image/png"
+        if ext == ".png"
+        else "application/octet-stream"
+    )
     return FileResponse(
         str(target_path),
         media_type=media_type,
