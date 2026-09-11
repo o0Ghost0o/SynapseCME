@@ -7,26 +7,28 @@ Plataforma descentralizada, *agent-first*, que convierte observaciones de campo 
 ## Arquitectura
 
 ```
-┌─────────────────────────────────────────┐
-│  CLIENTE — Nuxt 4 (Web / Capacitor)     │
-│  Captura agente · Panel 360 · Red viva  │
-└──────────────┬──────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  CLIENTE — Nuxt 4 (Web / PWA / Capacitor)              │
+│  Captura agente (offline-first) · Panel 360 · Red viva │
+│  Evidencia fotográfica · Login con grafo interactivo   │
+└──────────────┬─────────────────────────────────────────┘
                │  red local (REST + SSE + WS)
-┌──────────────▼──────────────────────────┐
-│  BACKEND — FastAPI (uv)                 │
-│  Agente GraphRAG · tool calling · WS    │
-└──────┬──────────────┬───────────────────┘
-       │              │
-┌──────▼─────────┐  ┌──▼────────────────────┐
-│ INFERENCIA     │  │ DATOS                 │
-│ QVAC (Tether)  │  │ Neo4j (grafo)         │
-│ MedPsy Q4_K_M  │  │ PostgreSQL (estado)   │
-│ EmbeddingGemma │  │ + log transacciones   │
-└────────────────┘  └───────────────────────┘
-┌──────────────────────────────────────────┐
-│ VOZ (CPU) — speaches / faster-whisper    │
-│ API OpenAI-compatible (/v1/audio/...)    │
-└──────────────────────────────────────────┘
+┌──────────────▼─────────────────────────────────────────┐
+│  BACKEND — FastAPI (uv)                                │
+│  Agente GraphRAG · Q&A no destructivo · tool calling   │
+│  Cola offline batch · Auditoría · Canal WS de eventos  │
+└──────┬──────────────┬───────────────────┬──────────────┘
+       │              │                   │
+┌──────▼─────────┐  ┌──▼────────────────┐ ┌──▼───────────────┐
+│ INFERENCIA     │  │ DATOS             │ │ EVIDENCIA         │
+│ QVAC (Tether)  │  │ Neo4j (grafo)     │ │ Almacenamiento    │
+│ MedPsy Q4_K_M  │  │ PostgreSQL        │ │ en volumen local  │
+│ EmbeddingGemma │  │ + log auditoría   │ │ /volumes/evidence │
+└────────────────┘  └───────────────────┘ └───────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ VOZ (CPU) — speaches / faster-whisper                  │
+│ API OpenAI-compatible (/v1/audio/...)                  │
+└────────────────────────────────────────────────────────┘
 ```
 
 ## Hardware de referencia
@@ -68,14 +70,14 @@ Servicios: **solo el gateway es público** — `http://localhost:3000` (o `https
 
 ### Persistencia
 
-Los datos sobreviven reinicios y recreación de contenedores vía bind mounts bajo `$VOLUMES_ROOT` (default `./volumes`): `neo4j/` (grafo), `postgres/` (estado operativo, métricas y log de transacciones) y `qvac/` (modelos descargados, para no repetir pulls de GB). Para borrarlo todo: `docker compose down` y elimina esos directorios del host.
+Los datos sobreviven reinicios y recreación de contenedores vía bind mounts bajo `$VOLUMES_ROOT` (default `./volumes`): `neo4j/` (grafo), `postgres/` (estado operativo, métricas y log de transacciones), `qvac/` (modelos descargados) y `evidence/` (fotos de evidencia fotográfica adjuntas a observaciones). Para borrarlo todo: `docker compose down` y elimina esos directorios del host.
 
 ### Datos sintéticos y pruebas
 
 ```bash
 docker compose exec backend uv run python /app/data/synthetic/seed.py --wipe   # grafo ficticio
 ./scripts/e2e.sh                                                                # E2E contra el stack vivo
-cd backend && uv sync && uv run pytest                                          # tests unitarios (63)
+cd backend && uv sync && uv run pytest                                          # tests unitarios (167)
 
 # o, sin tocar tu venv, en un contenedor desechable con las dev-deps:
 docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm backend-test
@@ -83,15 +85,32 @@ docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm backend
 
 ## Flujo de la aplicación
 
-1. **Captura en campo** (`/chat`): el ingeniero dicta o escribe en español — *"Visité el Hospital Aurora en Panamá, vi 3 resonancias y 2 tomógrafos, una RM tiene como 8 años"*. El agente (MedPsy con salida estructurada) extrae entidades; si el nodo de inferencia no responde, un extractor determinista en español mantiene la app operativa.
+1. **Captura en campo (offline-first con evidencia)** (`/chat`):
+   - El ingeniero dicta o escribe en español — *"Visité el Hospital Aurora en Panamá, vi 3 resonancias y 2 tomógrafos, una RM tiene como 8 años"*.
+   - **Evidencia fotográfica**: adjunta fotos directamente desde la cámara del móvil o archivo. Las imágenes se comprimen en el cliente mediante canvas HTML5 (~150 KB JPEG), se almacenan en el volumen persistente `./volumes/evidence/` y se sirven en `/api/evidence/{filename}`.
+   - **Cola offline transaccional**: en zonas hospitalarias sin conexión (sótanos o búnkeres de radiación), las observaciones se guardan localmente en `localStorage` con etiqueta `En cola offline`. Al reconectar, se sincronizan atómicamente en un único lote empaquetado (`messages: string[]`).
+   - **Zona horaria y timestamps locales**: la hora de captura local se ancla a la zona horaria del dispositivo y se transmite al prompt del agente para contextualizar referencias relativas ("hoy", "ayer").
+   - **Edición in-line de propuestas**: antes de confirmar en el grafo, el usuario puede editar manualmente cualquier atributo o parámetro técnico extraído.
+   - **Copiar conversación completa**: botón dedicado en la cabecera para copiar toda la transcripción con formato limpio y estructurado al portapapeles.
 
 ### Dictado por voz
 
 El servicio `stt` (speaches / faster-whisper, **CPU a propósito**: la RTX se reserva para MedPsy) expone la API OpenAI-compatible de transcripciones dentro de la red interna (`http://stt:8000`). El frontend sube el audio a `POST /api/stt` (rol capturer+) y el backend lo reenvía; si el servicio no responde, el usuario recibe un 503 claro en español en menos de ~15 s. El modelo (`Systran/faster-whisper-small`, ~460 MB, configurable con `STT_MODEL`) se descarga **una sola vez** al caché persistente de HuggingFace en el primer uso. La voz es una transformación de solo lectura: no genera filas en `transaction_log` ni métricas Track 02. Existe variante CUDA (`latest-cuda`) documentada en `docker-compose.gpu.yml` por si algún día sobra VRAM.
-2. **GraphRAG**: el motor traduce la extracción en mutaciones del grafo (MERGE de la jerarquía región → país → ciudad → instalación → equipo), detecta duplicados y pondera consenso entre observadores para promover estados: **Desconocido → Estimado → Reportado → Confirmado**.
-3. **Panel 360** (`/dashboard`): agregado ejecutivo por región/país/instalación, cuadrícula de modalidades, antigüedad y oportunidades de renovación tecnológica.
-4. **Red en vivo** (`/network`): grafo interactivo en tiempo real, clientes conectados (apps de campo, paneles) y **registro de transacciones** en vivo por WebSocket.
-5. **Métricas** (`/metricas`): tabla de rendimiento Track 02.
+
+2. **Asistente y Q&A no destructivo**:
+   - Clasificación heurística determinista de intención (`INTENT_QUESTION` vs `INTENT_OBSERVATION` vs `INTENT_MIXED`).
+   - Preguntas y filtros sobre el parque instalado (*"Dame una lista de los equipos sin modelo"*, *"filtra por tomógrafos"*) consultan el grafo y responden sin mutar la base de datos ni crear propuestas de registro ficticias.
+   - Base de Conocimiento interna (`APP_KNOWLEDGE_BASE`) que explica el modelo de consenso, estados y parámetros.
+   - Chat dedicado por equipo en `/api/equipment/{id}/chat` para consultas contextuales y revisiones.
+
+3. **GraphRAG**: el motor traduce la extracción en mutaciones del grafo (MERGE de la jerarquía región → país → ciudad → instalación → equipo), detecta duplicados y pondera consenso entre observadores para promover estados: **Desconocido → Estimado → Reportado → Confirmado**.
+4. **Ficha de equipo y edición manual**:
+   - Visualización 360 del equipo (`/equipos/{id}`) con historial de observaciones, parámetros técnicos, miniaturas de fotos y visor lightbox.
+   - Edición manual directa mediante `PATCH /api/equipment/{id}` con log inmutable de auditoría en PostgreSQL (`action="update"`).
+   - Enlace directo desde el chat a la ficha recién confirmada.
+5. **Panel 360** (`/dashboard`): agregado ejecutivo por región/país/instalación, cuadrícula de modalidades, antigüedad y oportunidades de renovación tecnológica.
+6. **Red en vivo** (`/network`): grafo interactivo en tiempo real, clientes conectados (apps de campo, paneles) y **registro de transacciones** en vivo por WebSocket.
+7. **Métricas** (`/metricas`): tabla de rendimiento Track 02.
 
 ## Autenticación y roles (RBAC)
 
@@ -139,7 +158,7 @@ Capturadas automáticamente por request en `perf_log` (model load time, prompt/g
 
 ## API (resumen)
 
-`POST /api/auth/login|refresh|logout` · `GET /api/auth/me` · `POST/GET /api/auth/users` (admin) · `POST /api/chat` (SSE, capturer+) · `POST /api/stt` (multipart audio → texto, capturer+) · `GET /api/facility/{id}` · `GET /api/hierarchy` · `GET /api/network` · `GET /api/metrics` · `GET /api/transactions` (+ `/export.csv`) · `WS /ws/events` (hello con token) · `GET /api/health`
+`POST /api/auth/login|refresh|logout` · `GET /api/auth/me` · `POST/GET /api/auth/users` (admin) · `POST /api/chat` (SSE, soporte batch y evidencia, capturer+) · `GET /api/evidence/{filename}` · `GET /api/equipment/{id}` · `PATCH /api/equipment/{id}` (edición manual auditada) · `POST /api/equipment/{id}/chat` (Q&A y revisión) · `POST /api/stt` (multipart audio → texto, capturer+) · `GET /api/facility/{id}` · `GET /api/hierarchy` · `GET /api/network` · `GET /api/metrics` · `GET /api/transactions` (+ `/export.csv`) · `GET /api/conversations` · `WS /ws/events` (hello con token) · `GET /api/health`
 
 ## Licencia
 
