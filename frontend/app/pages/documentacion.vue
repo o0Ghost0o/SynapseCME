@@ -9,57 +9,50 @@ interface FollowUp {
 
 const howItWorks = [
   {
-    title: 'Captura en campo',
-    text: 'El ingeniero dicta o escribe en español libre: "Visité el Hospital Aurora en Panamá, vi 3 resonancias y 2 tomógrafos, una RM tiene como 8 años". También por voz, con dictado STT on-edge.',
+    title: 'Captura en campo (Voz, Texto y Evidencia Fotográfica)',
+    text: 'El ingeniero dicta o escribe en español libre ("Visité el Hospital Aurora en Panamá, vi 2 tomógrafos GE...") y opcionalmente adjunta fotos desde cámara o archivo (comprimidas en cliente a ~150 KB). Timestamps y zona horaria se anclan al dispositivo local.',
   },
   {
-    title: 'Extracción con LLM local',
-    text: 'MedPsy (Q4_K_M, vía QVAC) extrae entidades con salida estructurada. Si el nodo de inferencia no responde, un extractor determinista en español mantiene la app operativa.',
+    title: 'Resiliencia offline y sincronización transaccional',
+    text: 'En zonas hospitalarias sin cobertura (sótanos o búnkeres de radiación), las observaciones y fotos se retienen en una cola local persistente (localStorage). Al recuperar la conexión, se empaquetan y sincronizan atómicamente en lote con el backend.',
   },
   {
-    title: 'GraphRAG: el grafo muta',
-    text: 'La extracción se traduce en mutaciones del grafo (MERGE de la jerarquía región → país → ciudad → instalación → equipo), con detección de duplicados.',
+    title: 'Extracción con LLM local o Consultas no destructivas',
+    text: 'MedPsy (Q4_K_M, vía QVAC) extrae entidades estructuradas con fallback determinista. Si el usuario realiza preguntas o filtros ("¿Por qué es un estado estimado?", "filtra por equipo sin modelo"), el asistente consulta el grafo o la Base de Conocimiento sin mutar datos.',
   },
   {
-    title: 'Consenso ponderado',
-    text: 'Las observaciones de distintos observadores se ponderan para promover estados: Desconocido → Estimado → Reportado → Confirmado. Cada mutación queda en el registro de transacciones.',
+    title: 'GraphRAG y persistencia de evidencias',
+    text: 'Las extracciones confirmadas mutan el grafo Neo4j (MERGE jerárquico región → país → ciudad → instalación → equipo), vinculando observaciones y referencias fotográficas servidas desde un volumen persistente.',
   },
   {
-    title: 'Lectura en tiempo real',
-    text: 'Panel 360 (agregado ejecutivo), Red en vivo (grafo interactivo con clientes conectados) y Métricas de rendimiento del modelo, todo por WebSocket y REST.',
+    title: 'Consenso ponderado y edición flexible',
+    text: 'Las observaciones se ponderan para promover estados: Desconocido → Estimado → Reportado → Confirmado. El personal puede editar propuestas in-line antes de confirmar o ajustar fichas manualmente con auditoría transaccional en PostgreSQL.',
+  },
+  {
+    title: 'Lectura en tiempo real y copia ágil',
+    text: 'Panel 360 ejecutivo, Red en vivo interactiva y Métricas vía WebSocket/REST, con botón para exportar y copiar el historial conversacional completo en un clic.',
   },
 ]
 
 const stack = [
-  { icon: 'phone', title: 'Cliente — Nuxt 4 (PWA / Capacitor)', text: 'Captura, Panel 360, Red viva y Métricas; instalable como app y con modo offline.' },
-  { icon: 'settings', title: 'Backend — FastAPI', text: 'Agente GraphRAG con tool calling, autenticación JWT + refresh rotativo (RBAC) y canal WS de eventos.' },
-  { icon: 'sparkles', title: 'Inferencia — QVAC (Tether)', text: 'MedPsy Q4_K_M (~4.5 GB) + EmbeddingGemma multilingüe sobre RTX; servidor OpenAI-compatible, cero nube.' },
-  { icon: 'database', title: 'Datos — Neo4j + PostgreSQL', text: 'Grafo de la red instalada y estado operativo con log inmutable de transacciones.' },
-  { icon: 'mic', title: 'Voz — speaches / faster-whisper', text: 'Transcripción en CPU a propósito: la GPU se reserva para el modelo de chat.' },
-  { icon: 'shield', title: 'Gateway — Caddy único punto público', text: 'Un solo origen para app, /api/* y /ws/*; Neo4j, Postgres y QVAC son internos.' },
+  { icon: 'phone', title: 'Cliente — Nuxt 4 (PWA / Capacitor)', text: 'Captura offline-first con cola transaccional (useChatQueue), compresión de fotos en canvas, visor lightbox y grafo interactivo en login.' },
+  { icon: 'settings', title: 'Backend — FastAPI (Python 3.14/uv)', text: 'Agente GraphRAG con tool calling, clasificación heurística de intenciones, Base de Conocimiento interna, endpoints PATCH y canal WS.' },
+  { icon: 'sparkles', title: 'Inferencia — QVAC (Tether)', text: 'MedPsy Q4_K_M (~4.5 GB) + EmbeddingGemma multilingüe sobre RTX local; cero nube y privacidad médica absoluta.' },
+  { icon: 'database', title: 'Datos — Neo4j + PostgreSQL + Evidencia', text: 'Grafo Neo4j para la red hospitalaria, PostgreSQL para auditoría/usuarios y volumen persistente para fotos de evidencia.' },
+  { icon: 'mic', title: 'Voz — speaches / faster-whisper', text: 'Transcripción STT en CPU dedicada: la GPU se reserva íntegra para el modelo de lenguaje.' },
+  { icon: 'shield', title: 'Gateway — Caddy único punto público', text: 'Punto único de acceso para Web, /api/*, /ws/* y servicio de evidencia (/api/evidence/*); bases de datos aisladas.' },
 ]
 
 const value = [
-  { icon: 'clipboard', title: 'Inventario vivo sin formularios', text: 'El parque instalado se actualiza hablando, no rellenando campos: la fricción de la captura desaparece.' },
-  { icon: 'check', title: 'Confianza por consenso', text: 'Cada dato gana fiabilidad a medida que distintos observadores lo confirman; nada se presenta como hecho sin respaldo.' },
-  { icon: 'refresh', title: 'Oportunidades de renovación', text: 'Antigüedad, modalidades y estado por instalación hacen visible dónde hay ciclo de renovación tecnológica.' },
-  { icon: 'lock', title: 'Soberanía de los datos', text: 'Hospital e instalaciones conservan sus datos en su propio hardware; nada sale a APIs de terceros.' },
-  { icon: 'trending-up', title: 'Coste de despliegue mínimo', text: 'Una RTX 3060 Ti (8 GB) aloja todo el stack; corre igual en CPU para desarrollo.' },
-  { icon: 'globe', title: 'Red de pares', text: 'Los nodos pueden sincronizar observaciones entre sí (SYNC_PEERS): cada sede ve la red completa sin centralizarla.' },
+  { icon: 'clipboard', title: 'Inventario vivo sin formularios', text: 'El parque instalado se actualiza hablando o fotografiando; la fricción burocrática desaparece.' },
+  { icon: 'camera', title: 'Evidencia fotográfica auditable', text: 'Cada observación puede respaldarse con imágenes comprimidas vinculadas directamente al historial del equipo.' },
+  { icon: 'wifi-off', title: 'Resiliencia offline total', text: 'Trabajo ininterrumpido en búnkeres y quirófanos sin cobertura; sincronización atómica al reconectar.' },
+  { icon: 'check', title: 'Confianza por consenso', text: 'Los datos ganan fiabilidad a medida que distintos observadores coinciden; estados transparentes y trazables.' },
+  { icon: 'refresh', title: 'Oportunidades de renovación', text: 'Antigüedad, alertas de parámetros y estados hacen visible dónde hay ciclo de reemplazo tecnológico.' },
+  { icon: 'lock', title: 'Soberanía de los datos', text: 'El hospital conserva sus datos en su propio hardware on-premise; nada sale a terceros.' },
 ]
 
 const followUps: FollowUp[] = [
-  {
-    icon: 'camera',
-    title: 'Captura de evidencia fotográfica',
-    summary: 'Adjuntar fotos a las observaciones de campo como respaldo verificable del estado del equipo.',
-    details: [
-      'Fotos adjuntas a cada observación, con compresión y límite de tamaño',
-      'Miniaturas en el detalle de equipo y en el expediente de la instalación',
-      'Sincronización diferida para captura sin conexión (PWA)',
-    ],
-    tags: ['captura', 'offline', 'evidencia'],
-  },
   {
     icon: 'users',
     title: 'Jerarquía de roles y revisiones',

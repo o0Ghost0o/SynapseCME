@@ -222,6 +222,8 @@ async def ingest_extraction(
                 item=item.model_dump(),
                 text=ext.raw or "",
                 confidence=item.confidence,
+                created_at=ext.created_at,
+                evidence=ext.evidence,
             )
             equipment_id = tx["equipment_id"]
             created = tx["created"]
@@ -377,6 +379,8 @@ async def _merge_equipment_and_observation(
     item: dict[str, Any],
     text: str,
     confidence: float,
+    created_at: str | None = None,
+    evidence: str | None = None,
 ) -> dict[str, Any]:
     # The caller pre-resolves the equipment id (duplicate detection); create
     # the node only when nothing exists under that id yet.
@@ -409,7 +413,8 @@ async def _merge_equipment_and_observation(
         "    e.facility_id = $fid "
         "MERGE (c:Contributor {name: $contributor}) "
         "CREATE (o:Observation {id: $oid, text: $text, confidence: $confidence, "
-        "                       created_at: datetime()}) "
+        "                       evidence: $evidence, "
+        "                       created_at: coalesce(datetime($created_at), datetime())}) "
         "MERGE (o)-[:OBSERVED]->(e) "
         "MERGE (o)-[:MADE_BY]->(c) "
         "FOREACH (p IN $par_list | "
@@ -432,6 +437,8 @@ async def _merge_equipment_and_observation(
         text=text,
         confidence=confidence,
         par_list=parameters,
+        created_at=created_at,
+        evidence=evidence,
     )
     record = await result.single()
     return dict(record) if record else {"equipment_id": equipment_id, "created": True}
@@ -475,6 +482,8 @@ async def _merge_equipment_revision(
     confidence: float,
     text: str,
     par_list: list[dict[str, Any]],
+    created_at: str | None = None,
+    evidence: str | None = None,
 ) -> dict[str, Any]:
     result = await tx.run(
         "MATCH (e:Equipment {id: $eid}) "
@@ -485,7 +494,8 @@ async def _merge_equipment_revision(
         "    e.modality = coalesce(e.modality, $modality) "
         "MERGE (c:Contributor {name: $contributor}) "
         "CREATE (o:Observation {id: $oid, text: $text, confidence: $confidence, "
-        "                       created_at: datetime()}) "
+        "                       evidence: $evidence, "
+        "                       created_at: coalesce(datetime($created_at), datetime())}) "
         "MERGE (o)-[:OBSERVED]->(e) "
         "MERGE (o)-[:MADE_BY]->(c) "
         "FOREACH (p IN $par_list | "
@@ -505,6 +515,8 @@ async def _merge_equipment_revision(
         confidence=confidence,
         text=text,
         par_list=par_list,
+        created_at=created_at,
+        evidence=evidence,
     )
     record = await result.single()
     return dict(record) if record else {}
@@ -560,6 +572,8 @@ async def ingest_equipment_revision(
             confidence=confidence,
             text=ext.raw or "",
             par_list=parameters,
+            created_at=ext.created_at,
+            evidence=ext.evidence,
         )
         result.equipment_ids.append(equipment_id)
 
@@ -801,7 +815,7 @@ async def get_equipment_detail(equipment_id: str) -> dict[str, Any] | None:
             "OPTIONAL MATCH (o:Observation)-[:OBSERVED]->(e) "
             "OPTIONAL MATCH (o)-[:MADE_BY]->(c:Contributor) "
             "RETURN o.id AS id, c.name AS contributor, o.text AS text, "
-            "       o.confidence AS confidence, toString(o.created_at) AS created_at "
+            "       o.confidence AS confidence, o.evidence AS evidence, toString(o.created_at) AS created_at "
             "ORDER BY o.created_at DESC",
             {"eid": equipment_id},
         )
@@ -842,6 +856,8 @@ _EQUIPMENT_FILTERS = (
     "AND (NOT $has_issue OR EXISTS { "
     "      MATCH (pi:Parameter)-[:MEASURED_ON]->(e) "
     "      WHERE pi.status IN ['warning', 'critical'] }) "
+    "AND (NOT $unnamed OR e.model IS NULL OR e.model = '' OR e.model = 'sin-modelo' "
+    "     OR e.manufacturer IS NULL OR e.manufacturer = '') "
 )
 
 _EQUIPMENT_MATCH = (
@@ -866,6 +882,7 @@ async def list_equipments(
     facility: str | None = None,
     q: str | None = None,
     has_issue: bool = False,
+    unnamed: bool = False,
     limit: int = 100,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -880,6 +897,7 @@ async def list_equipments(
         "facility": facility or None,
         "q": q or None,
         "has_issue": has_issue,
+        "unnamed": unnamed,
         "limit": max(min(limit, 500), 1),
         "offset": max(offset, 0),
     }
@@ -909,3 +927,105 @@ async def list_equipments(
         )
         items = [dict(r) async for r in result]
     return {"total": total, "items": items, "limit": params["limit"], "offset": params["offset"]}
+
+
+async def patch_equipment(
+    equipment_id: str,
+    patch: Any,
+    contributor: str,
+    client_type: str | None,
+    full_name: str | None = None,
+) -> dict[str, Any] | None:
+    """Manually patch equipment attributes and/or parameters."""
+    if _driver is None:
+        return None
+    async with _driver.session() as session:
+        detail = await get_equipment_detail(equipment_id)
+        if detail is None:
+            return None
+        eq = detail["equipment"]
+
+        set_clauses = []
+        params: dict[str, Any] = {"eid": equipment_id}
+        if getattr(patch, "manufacturer", None) is not None:
+            set_clauses.append("e.manufacturer = $manufacturer")
+            params["manufacturer"] = patch.manufacturer
+        if getattr(patch, "model", None) is not None:
+            set_clauses.append("e.model = $model")
+            params["model"] = patch.model
+        if getattr(patch, "age_years", None) is not None:
+            set_clauses.append("e.age_years = $age_years")
+            params["age_years"] = patch.age_years
+        if getattr(patch, "quantity", None) is not None:
+            set_clauses.append("e.quantity = $quantity")
+            params["quantity"] = patch.quantity
+
+        if set_clauses:
+            query = f"MATCH (e:Equipment {{id: $eid}}) SET {', '.join(set_clauses)}"
+            await session.run(query, params)
+
+        parameters = getattr(patch, "parameters", None) or []
+        if parameters:
+            obs_id = _new_id("obs")
+            par_list = [
+                {
+                    "id": _new_id("par"),
+                    "name": p.name if hasattr(p, "name") else p["name"],
+                    "value": p.value if hasattr(p, "value") else p.get("value"),
+                    "unit": p.unit if hasattr(p, "unit") else p.get("unit"),
+                    "status": p.status if hasattr(p, "status") else p.get("status"),
+                }
+                for p in parameters
+                if (p.name if hasattr(p, "name") else p.get("name"))
+            ]
+            note = getattr(patch, "note", None) or "Actualización manual"
+            await session.run(
+                "MATCH (e:Equipment {id: $eid}) "
+                "MERGE (c:Contributor {name: $contributor}) "
+                "CREATE (o:Observation {id: $oid, text: $note, confidence: 1.0, created_at: datetime()}) "
+                "MERGE (o)-[:OBSERVED]->(e) "
+                "MERGE (o)-[:MADE_BY]->(c) "
+                "FOREACH (p IN $par_list | "
+                "  MERGE (par:Parameter {source_observation_id: $oid, name: p.name}) "
+                "  ON CREATE SET par.id = p.id, par.value = p.value, par.unit = p.unit, "
+                "                par.status = p.status, par.created_at = datetime() "
+                "  ON MATCH SET par.value = p.value, par.unit = p.unit, par.status = p.status "
+                "  MERGE (par)-[:MEASURED_ON]->(e))",
+                eid=equipment_id,
+                oid=obs_id,
+                note=note,
+                contributor=contributor,
+                par_list=par_list,
+            )
+
+        label = " ".join(
+            str(x)
+            for x in (
+                getattr(patch, "manufacturer", None) or eq.get("manufacturer"),
+                getattr(patch, "model", None) or eq.get("model"),
+            )
+            if x
+        ) or "Equipo"
+        summary = f"Actualización manual de {label} en {eq.get('facility_name', '')}: {getattr(patch, 'note', None) or 'parámetros editados'}"
+        entry = await db.log_transaction(
+            actor=contributor,
+            client_type=client_type,
+            action="update",
+            target_type="Equipment",
+            target_id=equipment_id,
+            target_name=f"{eq.get('facility_name', '')} · {label}",
+            payload={
+                "manufacturer": getattr(patch, "manufacturer", None),
+                "model": getattr(patch, "model", None),
+                "age_years": getattr(patch, "age_years", None),
+                "quantity": getattr(patch, "quantity", None),
+                "parameters": [
+                    (p.name if hasattr(p, "name") else p["name"]) for p in parameters
+                ],
+                "full_name": full_name,
+            },
+        )
+        if entry is not None:
+            await _emit_tx(entry, summary)
+
+        return await get_equipment_detail(equipment_id)

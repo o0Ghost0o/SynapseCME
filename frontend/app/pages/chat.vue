@@ -3,6 +3,9 @@ import { useToast } from '~/composables/useToast'
 import { EXAMPLE_CATEGORIES, type ExampleItem } from '~/utils/examples'
 import type { ConversationSummary } from '~/components/ConversationList.vue'
 import type { EquipmentRef } from '~/components/EquipmentRefCard.vue'
+import { formatClientRelative, getClientISOString, getClientTimezone } from '~/utils/date'
+import { compressImage } from '~/utils/evidence'
+import { useChatQueue } from '~/composables/useChatQueue'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -21,6 +24,12 @@ interface ChatMessage {
   view?: 'text' | 'cards'
   // Mensajes cargados del historial: no se re-ingieren ni se confirman.
   historical?: boolean
+  // Enlace al equipo confirmado
+  equipmentId?: string | null
+  // Evidencia fotográfica opcional
+  evidence?: string | null
+  // Indicador de encolado offline
+  offline?: boolean
 }
 
 interface ConversationMessage {
@@ -36,6 +45,12 @@ const { show } = useToast()
 const { apiOnline, refresh } = useConnection()
 const { ensure } = useEvents()
 const { user } = useAuth()
+const chatQueue = useChatQueue()
+
+const evidenceData = ref<string | null>(null)
+const evidenceFileInput = ref<HTMLInputElement | null>(null)
+const lightboxImage = ref<string | null>(null)
+const editingProposal = reactive<Record<number, boolean>>({})
 
 onMounted(() => {
   ensure({ client_type: 'field_app', name: 'App de campo SynapseCME' })
@@ -62,11 +77,84 @@ async function loadConversations() {
 }
 
 function timeLabel(iso?: string): string {
-  const d = iso ? new Date(iso) : new Date()
-  if (Number.isNaN(d.getTime())) return ''
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `hoy · ${hh}:${mm}`
+  return formatClientRelative(iso)
+}
+
+async function onPhotoSelected(e: Event) {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  try {
+    const compressed = await compressImage(file)
+    evidenceData.value = compressed
+    show('Evidencia fotográfica adjuntada')
+  } catch {
+    show('Error al procesar la imagen')
+  } finally {
+    target.value = ''
+  }
+}
+
+function removeEvidence() {
+  evidenceData.value = null
+}
+
+// Auto-sincronización cuando se recupera la conexión
+watch(
+  () => apiOnline.value,
+  (online) => {
+    if (online && chatQueue.queuedCount.value > 0 && !chatQueue.isSyncing.value) {
+      void syncOfflineQueue()
+    }
+  },
+  { immediate: true },
+)
+
+async function syncOfflineQueue() {
+  if (chatQueue.isSyncing.value || !chatQueue.queuedCount.value) return
+  chatQueue.isSyncing.value = true
+  show(`Sincronizando ${chatQueue.queuedCount.value} mensaje(s) pendientes…`)
+
+  const payload = chatQueue.getBatchPayload()
+  if (!payload) {
+    chatQueue.isSyncing.value = false
+    return
+  }
+
+  const msg = reactive<ChatMessage>({
+    role: 'assistant',
+    text: '',
+    time: formatClientRelative(),
+    extraction: null,
+    followup: null,
+    done: false,
+    equipment: [],
+    view: 'text',
+  })
+  messages.value.push(msg)
+  scrollDown()
+
+  try {
+    const res = await fetchWithAuth('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+    await readSseStream(res.body, msg)
+    for (const m of messages.value) {
+      if (m.offline) m.offline = false
+    }
+    chatQueue.clear()
+    show('Sincronización en lote completada con éxito')
+  } catch {
+    msg.error = true
+    msg.text = 'Error al sincronizar mensajes pendientes con el agente.'
+    show('Fallo al sincronizar mensajes offline')
+  } finally {
+    chatQueue.isSyncing.value = false
+    scrollDown()
+  }
 }
 
 async function openConversation(id: string) {
@@ -415,6 +503,9 @@ function handleEvent(msg: ChatMessage, event: Record<string, unknown>) {
     }
     case 'done':
       msg.done = true
+      if (Array.isArray(event.equipment_ids) && event.equipment_ids.length) {
+        msg.equipmentId = String(event.equipment_ids[0])
+      }
       // Ancla la conversación activa (creada server-side si no venía) y
       // refresca la lista: el título se genera fire-and-forget tras el done,
       // así que la lista se re-carga para mostrarlo cuando llegue.
@@ -433,15 +524,87 @@ function scrollDown() {
   })
 }
 
+async function readSseStream(body: ReadableStream<Uint8Array>, msg: ChatMessage) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const rawEvent = buffer.slice(0, idx)
+      buffer = buffer.slice(idx + 2)
+      for (const line of rawEvent.split('\n')) {
+        if (!line.startsWith('data:')) continue
+        const payload = line.slice(5).trim()
+        if (!payload) continue
+        try {
+          handleEvent(msg, JSON.parse(payload))
+        } catch {
+          // línea de mantenimiento del stream: se ignora
+        }
+      }
+    }
+  }
+  msg.done = true
+}
+
 async function send() {
   const text = input.value.trim()
-  if (!text || sending.value) return
+  if ((!text && !evidenceData.value) || sending.value) return
+  const currentEvidence = evidenceData.value
   input.value = ''
-  messages.value.push({ role: 'user', text, time: timeLabel(), extraction: null, followup: null, done: true })
-  const msg = reactive<ChatMessage>({ role: 'assistant', text: '', extraction: null, followup: null, done: false, equipment: [], view: 'text' })
+  evidenceData.value = null
+
+  const clientTime = getClientISOString()
+  const clientTz = getClientTimezone()
+
+  // Comprobación offline: encolar localmente sin dar error si no hay conexión
+  if (apiOnline.value === false) {
+    chatQueue.enqueue(text, {
+      evidence: currentEvidence,
+      conversation_id: activeConversationId.value,
+    })
+    messages.value.push({
+      role: 'user',
+      text,
+      time: formatClientRelative(clientTime),
+      evidence: currentEvidence,
+      extraction: null,
+      followup: null,
+      done: true,
+      offline: true,
+    })
+    show('Sin conexión. Mensaje guardado en cola local.')
+    scrollDown()
+    return
+  }
+
+  messages.value.push({
+    role: 'user',
+    text,
+    time: formatClientRelative(clientTime),
+    evidence: currentEvidence,
+    extraction: null,
+    followup: null,
+    done: true,
+  })
+  const msg = reactive<ChatMessage>({
+    role: 'assistant',
+    text: '',
+    time: formatClientRelative(clientTime),
+    extraction: null,
+    followup: null,
+    done: false,
+    equipment: [],
+    view: 'text',
+  })
   messages.value.push(msg)
   sending.value = true
   scrollDown()
+
   try {
     const res = await fetchWithAuth('/api/chat', {
       method: 'POST',
@@ -449,37 +612,21 @@ async function send() {
       body: JSON.stringify({
         message: text,
         client_type: 'field_app',
+        client_timestamp: clientTime,
+        client_timezone: clientTz,
+        evidence: currentEvidence,
         ...(activeConversationId.value ? { conversation_id: activeConversationId.value } : {}),
       }),
     })
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let idx: number
-      while ((idx = buffer.indexOf('\n\n')) >= 0) {
-        const rawEvent = buffer.slice(0, idx)
-        buffer = buffer.slice(idx + 2)
-        for (const line of rawEvent.split('\n')) {
-          if (!line.startsWith('data:')) continue
-          const payload = line.slice(5).trim()
-          if (!payload) continue
-          try {
-            handleEvent(msg, JSON.parse(payload))
-          } catch {
-            // línea de mantenimiento del stream: se ignora
-          }
-        }
-      }
-    }
-    msg.done = true
+    await readSseStream(res.body, msg)
   } catch {
+    chatQueue.enqueue(text, {
+      evidence: currentEvidence,
+      conversation_id: activeConversationId.value,
+    })
     msg.error = true
-    msg.text = msg.text || 'No se pudo contactar con el agente. Comprueba que el servidor local esté en marcha.'
+    msg.text = 'Conexión interrumpida. El mensaje se guardó en cola local y se sincronizará al reconectar.'
   } finally {
     sending.value = false
     scrollDown()
@@ -488,6 +635,51 @@ async function send() {
 
 function applyFollowup(question: string) {
   input.value = question
+}
+
+async function copyFullChat() {
+  if (!messages.value.length) {
+    show('No hay mensajes en la conversación para copiar')
+    return
+  }
+  const lines: string[] = []
+  for (const m of messages.value) {
+    const sender = m.role === 'user' ? (user.value?.full_name || user.value?.username || 'Usuario') : 'SynapseCME'
+    const timeStr = m.time ? ` (${m.time})` : ''
+    lines.push(`[${sender}]${timeStr}:`)
+    if (m.text) {
+      lines.push(m.text)
+    }
+    if (m.extraction) {
+      lines.push('--- Extracción estructurada ---')
+      for (const def of FIELD_DEFS) {
+        const val = fieldValue(m.extraction, def)
+        if (val !== undefined && val !== null && val !== '') {
+          lines.push(`${def.label}: ${displayValue(def.key, val)}`)
+        }
+      }
+    }
+    if (m.equipment && m.equipment.length) {
+      lines.push('--- Equipos referenciados ---')
+      for (const eq of m.equipment) {
+        const title = [eq.manufacturer, eq.model || 'sin modelo', eq.modality].filter(Boolean).join(' ')
+        const loc = [eq.facility_name, eq.country].filter(Boolean).join(' · ')
+        const st = eq.state ? ` [${eq.state}]` : ''
+        lines.push(`- ${title} | ${loc}${st}`)
+      }
+    }
+    if (m.followup) {
+      lines.push(`Pregunta de seguimiento: ${m.followup}`)
+    }
+    lines.push('')
+  }
+  const fullText = lines.join('\n').trim()
+  try {
+    await navigator.clipboard.writeText(fullText)
+    show('Conversación copiada al portapapeles')
+  } catch {
+    show('Error al copiar al portapapeles')
+  }
 }
 
 const confirmed = reactive<Record<number, boolean>>({})
@@ -526,7 +718,36 @@ const confirmed = reactive<Record<number, boolean>>({})
         <span class="glass-chip border-[#c4ddfb] bg-[#eaf3fe] text-[#1d63d8]">
           Pregunta o dicta una observación
         </span>
+        <button
+          v-if="messages.length"
+          type="button"
+          class="glass-chip border-[#d0d5dd] bg-white text-[#344054] hover:bg-[#f8fafc] hover:border-[#98a2b3] cursor-pointer transition flex items-center gap-1.5 px-3 py-1"
+          title="Copiar toda la conversación al portapapeles"
+          @click="copyFullChat"
+        >
+          <Icon name="copy" :size="13" class="text-[#475467]" />
+          <span class="font-medium">Copiar chat</span>
+        </button>
       </div>
+    </div>
+
+    <div
+      v-if="chatQueue.queuedCount.value > 0"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f2e2a8] bg-[#fffaeb] px-4 py-2.5"
+    >
+      <p class="flex items-center gap-2 text-xs font-medium text-[#8a6100]">
+        <Icon name="clock" :size="15" class="shrink-0 text-[#d99a00]" />
+        <span>Hay <b>{{ chatQueue.queuedCount.value }}</b> observación(es) en cola local pendientes de sincronización.</span>
+      </p>
+      <button
+        v-if="apiOnline"
+        class="btn-ghost text-xs font-semibold text-[#8a6100] border-[#e0c46c] hover:bg-[#faedd0] px-3 py-1"
+        :disabled="chatQueue.isSyncing.value"
+        @click="syncOfflineQueue"
+      >
+        <Icon name="refresh" :size="12" />
+        {{ chatQueue.isSyncing.value ? 'Sincronizando…' : 'Sincronizar lote ahora' }}
+      </button>
     </div>
 
     <div
@@ -535,7 +756,7 @@ const confirmed = reactive<Record<number, boolean>>({})
     >
       <p class="flex flex-1 items-center gap-2.5 text-[13.5px] text-[#8a2018]">
         <Icon name="alert" :size="17" class="shrink-0 text-[#d92d20]" />Servidor local no disponible. Las observaciones
-        quedan <b>en cola</b> hasta que el backend responda.
+        quedan <b>en cola local</b> y se sincronizarán al recuperar la conexión.
       </p>
       <button class="btn-ghost border-[#f0d3d3] text-[#b42318] hover:bg-[#fdf0f0]" @click="refresh()">
         <Icon name="refresh" :size="13" />Reintentar
@@ -570,14 +791,27 @@ const confirmed = reactive<Record<number, boolean>>({})
 
       <template v-for="(msg, i) in messages" :key="i">
         <div v-if="msg.role === 'user'" class="w-full rounded-2xl border border-[#e3e8f2] bg-white px-4 py-3.5 shadow-sm">
-          <div class="mb-2 flex items-center gap-2.5">
-            <span class="grid h-6 w-6 place-items-center rounded-full bg-[#eaf3fe] text-[#1d63d8]">
-              <Icon name="user" :size="12" />
+          <div class="mb-2 flex items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2.5">
+              <span class="grid h-6 w-6 place-items-center rounded-full bg-[#eaf3fe] text-[#1d63d8]">
+                <Icon name="user" :size="12" />
+              </span>
+              <span class="text-xs font-semibold text-[#101828]">{{ user?.full_name || user?.username || 'Observador de campo' }}</span>
+              <span v-if="msg.time" class="text-[11.5px] text-[#98a2b8]">{{ msg.time }}</span>
+            </div>
+            <span v-if="msg.offline" class="glass-chip border-[#f2e2a8] bg-[#fffaeb] text-[#8a6100] text-[10px] font-medium">
+              <Icon name="clock" :size="10" /> En cola offline
             </span>
-            <span class="text-xs font-semibold text-[#101828]">{{ user?.full_name || user?.username || 'Observador de campo' }}</span>
-            <span v-if="msg.time" class="text-[11.5px] text-[#98a2b8]">{{ msg.time }}</span>
           </div>
-          <p class="text-sm leading-relaxed text-[#39445c]">{{ msg.text }}</p>
+          <p v-if="msg.text" class="text-sm leading-relaxed text-[#39445c]">{{ msg.text }}</p>
+          <div v-if="msg.evidence" class="mt-2.5">
+            <img
+              :src="msg.evidence.startsWith('data:') || msg.evidence.startsWith('http') ? msg.evidence : `/api/evidence/${msg.evidence}`"
+              alt="Evidencia fotográfica"
+              class="max-h-48 rounded-xl border border-[#c4ddfb] object-cover cursor-pointer transition hover:opacity-90 shadow-sm"
+              @click="lightboxImage = msg.evidence"
+            />
+          </div>
         </div>
 
         <div v-else class="mr-auto w-full max-w-[92%]">
@@ -635,10 +869,22 @@ const confirmed = reactive<Record<number, boolean>>({})
 
           <div v-if="msg.extraction && Object.keys(msg.extraction).length" class="glass-strong mt-3 p-4">
             <div class="flex items-center justify-between gap-2">
-              <h3 class="text-sm font-semibold text-[#101828]">Extracción estructurada</h3>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-[#101828]">Extracción estructurada</h3>
+                <button
+                  type="button"
+                  class="glass-chip text-[11px] text-[#1d63d8] hover:bg-[#eaf3fe] transition"
+                  :disabled="confirmed[i]"
+                  @click="editingProposal[i] = !editingProposal[i]"
+                >
+                  <Icon :name="editingProposal[i] ? 'check' : 'edit'" :size="11" />
+                  {{ editingProposal[i] ? 'Listo' : 'Editar propuesta' }}
+                </button>
+              </div>
               <StateChip :estado="estadoValue(msg.extraction)" />
             </div>
-            <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
+
+            <dl v-if="!editingProposal[i]" class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
               <template v-for="def in FIELD_DEFS" :key="def.key">
                 <div v-if="fieldValue(msg.extraction, def) !== undefined">
                   <dt class="text-[11px] font-semibold uppercase tracking-wider text-[#7a8499]">{{ def.label }}</dt>
@@ -646,6 +892,34 @@ const confirmed = reactive<Record<number, boolean>>({})
                 </div>
               </template>
             </dl>
+
+            <div v-else class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-white/60 p-3 rounded-xl border border-[#d5e4fb]">
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Instalación</label>
+                <input v-model="msg.extraction.instalacion" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Modalidad</label>
+                <input v-model="msg.extraction.modalidad" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Fabricante</label>
+                <input v-model="msg.extraction.fabricante" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Modelo</label>
+                <input v-model="msg.extraction.modelo" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Antigüedad (años)</label>
+                <input v-model.number="msg.extraction.antiguedad" type="number" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+              <div>
+                <label class="text-[10.5px] font-semibold uppercase text-[#7a8499]">Cantidad</label>
+                <input v-model.number="msg.extraction.cantidad" type="number" class="glass-input mt-0.5 text-xs py-1" />
+              </div>
+            </div>
+
             <div v-if="confidencePct(msg.extraction) !== null" class="mt-3">
               <div class="flex justify-between text-[11px] text-[#7a8499]">
                 <span>Confianza</span><span>{{ confidencePct(msg.extraction)!.toFixed(0) }} %</span>
@@ -657,14 +931,24 @@ const confirmed = reactive<Record<number, boolean>>({})
                 />
               </div>
             </div>
-            <div class="mt-4 flex justify-end">
+            <div class="mt-4 flex justify-end gap-2">
+              <NuxtLink
+                v-if="confirmed[i] && msg.equipmentId"
+                :to="'/equipos/' + msg.equipmentId"
+                class="btn-primary flex items-center gap-1.5"
+              >
+                <Icon name="check" :size="14" />
+                Ver equipo registrado →
+              </NuxtLink>
               <button
+                v-else
                 class="btn-primary"
                 :disabled="confirmed[i] || msg.historical"
                 :title="msg.historical ? 'Este registro ya fue confirmado en su momento' : undefined"
                 @click="confirmed[i] = true; show('Registro confirmado')"
               >
-                <Icon v-if="confirmed[i]" name="check" :size="14" />{{ confirmed[i] ? 'Confirmado' : msg.historical ? 'Registro histórico' : 'Confirmar registro' }}
+                <Icon v-if="confirmed[i]" name="check" :size="14" />
+                {{ confirmed[i] ? 'Confirmado' : msg.historical ? 'Registro histórico' : 'Confirmar registro' }}
               </button>
             </div>
           </div>
@@ -673,6 +957,19 @@ const confirmed = reactive<Record<number, boolean>>({})
     </div>
 
     <div class="glass-strong p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div v-if="evidenceData" class="mb-3 flex items-center justify-between gap-3 rounded-xl border border-[#c4ddfb] bg-[#f4f8fe] p-2.5">
+        <div class="flex items-center gap-3">
+          <img :src="evidenceData" alt="Vista previa de evidencia" class="h-12 w-12 rounded-lg object-cover border border-[#b2ccf2]" />
+          <div>
+            <p class="text-xs font-semibold text-[#101828]">Evidencia fotográfica adjuntada</p>
+            <p class="text-[11px] text-[#5b6780]">Se vinculará a la observación</p>
+          </div>
+        </div>
+        <button type="button" class="btn-ghost text-xs text-[#b42318] hover:bg-[#fdf0f0]" @click="removeEvidence">
+          <Icon name="close" :size="13" /> Quitar
+        </button>
+      </div>
+
       <label for="capture" class="mb-1.5 block font-display text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#1d63d8]">
         Captura rápida
       </label>
@@ -691,6 +988,25 @@ const confirmed = reactive<Record<number, boolean>>({})
           <button class="btn-ghost" :disabled="dictating || transcribing" @click="examplesOpen = true">
             <Icon name="bulb" :size="15" /> Ejemplos
           </button>
+          <input
+            ref="evidenceFileInput"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            class="hidden"
+            @change="onPhotoSelected"
+          />
+          <button
+            type="button"
+            class="btn-ghost"
+            :class="evidenceData ? 'border-[#1d63d8] bg-[#eaf3fe] text-[#1d63d8]' : ''"
+            :disabled="sending"
+            title="Adjuntar evidencia fotográfica"
+            @click="evidenceFileInput?.click()"
+          >
+            <Icon name="camera" :size="15" />
+            <span class="hidden sm:inline">Foto</span>
+          </button>
           <button
             class="btn-ghost"
             :class="dictating ? 'border-[#f5a9a9] bg-[#fdf0f0] text-[#b42318]' : ''"
@@ -708,11 +1024,11 @@ const confirmed = reactive<Record<number, boolean>>({})
           </span>
           <button v-if="dictating" class="btn-ghost px-3 py-1.5 text-xs" @click="cancelRecording">Cancelar</button>
           <p v-else-if="!transcribing" class="hidden text-xs text-[#98a2b8] sm:block">
-            Toca Dictar para grabar una observación
+            Toca Dictar o Foto para capturar en campo
           </p>
         </div>
         <p class="hidden text-xs text-[#98a2b8] lg:block">Enter para enviar · Mayús+Enter para salto de línea</p>
-        <button class="btn-primary min-w-36" :disabled="sending || !input.trim()" @click="send">
+        <button class="btn-primary min-w-36" :disabled="sending || (!input.trim() && !evidenceData)" @click="send">
           {{ sending ? 'Procesando…' : 'Enviar al agente' }}<Icon v-if="!sending" name="send" :size="14" />
         </button>
       </div>
@@ -779,6 +1095,29 @@ const confirmed = reactive<Record<number, boolean>>({})
           <div class="mt-5 flex justify-end">
             <button class="btn-primary" @click="micModal = null">Entendido</button>
           </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal Lightbox para evidencia fotográfica -->
+    <Teleport to="body">
+      <div
+        v-if="lightboxImage"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        @click="lightboxImage = null"
+      >
+        <div class="relative max-h-[90vh] max-w-[90vw]" @click.stop>
+          <img
+            :src="lightboxImage.startsWith('data:') || lightboxImage.startsWith('http') ? lightboxImage : `/api/evidence/${lightboxImage}`"
+            alt="Evidencia fotográfica completa"
+            class="max-h-[85vh] max-w-[85vw] rounded-xl object-contain shadow-2xl"
+          />
+          <button
+            class="absolute -top-3 -right-3 grid h-8 w-8 place-items-center rounded-full bg-white text-[#101828] shadow-md hover:bg-gray-100"
+            @click="lightboxImage = null"
+          >
+            <Icon name="close" :size="16" />
+          </button>
         </div>
       </div>
     </Teleport>
