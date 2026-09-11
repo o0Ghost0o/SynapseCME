@@ -42,37 +42,30 @@ async function submit() {
   <div class="-mx-7 -my-6 grid min-h-[100dvh] overflow-hidden bg-white lg:grid-cols-[1.1fr_1fr]">
     <!-- Panel de marca -->
     <div class="relative hidden flex-col overflow-hidden bg-[#0e1630] p-11 text-[#eef2f9] lg:flex">
-      <div class="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div class="absolute inset-0 bg-[radial-gradient(700px_500px_at_30%_70%,rgba(37,99,235,0.28),transparent)]" />
-        <svg class="absolute inset-0 h-full w-full opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <g stroke="rgba(148,178,255,0.25)" stroke-width="0.25">
-            <line x1="12" y1="18" x2="38" y2="30" />
-            <line x1="38" y1="30" x2="30" y2="58" />
-            <line x1="30" y1="58" x2="62" y2="66" />
-            <line x1="62" y1="66" x2="78" y2="38" />
-            <line x1="38" y1="30" x2="78" y2="38" />
-            <line x1="12" y1="18" x2="30" y2="58" />
-            <line x1="62" y1="66" x2="86" y2="80" />
-            <line x1="78" y1="38" x2="86" y2="80" />
-          </g>
-          <g fill="#67d4ff">
-            <circle cx="12" cy="18" r="1.4" />
-            <circle cx="38" cy="30" r="1.8" />
-            <circle cx="30" cy="58" r="1.4" />
-            <circle cx="62" cy="66" r="1.8" />
-            <circle cx="78" cy="38" r="1.4" />
-            <circle cx="86" cy="80" r="1.2" />
-          </g>
-        </svg>
+      <!-- Fondo con gradiente y grafo interactivo -->
+      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(700px_500px_at_30%_70%,rgba(37,99,235,0.28),transparent)]" aria-hidden="true" />
+      <InteractiveGraphBackground />
+
+      <!-- Cabecera de marca con logo dark y badge de interactividad -->
+      <div class="relative z-10 flex items-center justify-between">
+        <img
+          src="/synapse-dark.svg"
+          alt="SynapseCME"
+          class="h-10 w-auto"
+          width="400"
+          height="120"
+        />
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-400/20 bg-[#070e24]/70 px-3 py-1 text-[11.5px] font-medium text-sky-300 shadow-sm backdrop-blur-md select-none">
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-sky-400"></span>
+          </span>
+          Grafo interactivo
+        </span>
       </div>
 
-      <div class="relative flex items-center gap-2">
-        <span class="h-6 w-6 rounded-md bg-gradient-to-br from-sky-500 to-blue-600" />
-        <span class="font-display text-lg font-bold">Synapse<span class="text-sky-400">CME</span></span>
-      </div>
-
-      <div class="relative mt-auto max-w-md">
-        <h1 class="font-display text-[33px] font-bold leading-[1.2] tracking-tight">
+      <div class="relative z-10 mt-auto max-w-md pointer-events-none select-none">
+        <h1 class="font-display text-[33px] font-bold leading-[1.2] tracking-tight pointer-events-auto select-text">
           Inteligencia de base instalada hospitalaria
         </h1>
         <p class="mt-3.5 text-[14.5px] leading-relaxed text-[#b9c5e0]">
